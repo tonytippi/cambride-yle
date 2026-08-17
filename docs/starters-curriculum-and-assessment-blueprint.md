@@ -2,7 +2,7 @@
 
 **Status:** Draft for academic and product approval  
 **Scope:** Web responsive/PWA v1, Pre A1 Starters practice; teacher-led speaking in a later v1.x release.  
-**Last reviewed:** 2026-08-17
+**Last reviewed:** 2026-08-17 (feedback policy synchronized with MVP brief)
 
 ## 1. Purpose
 
@@ -68,7 +68,7 @@ Speaking is not in the first self-directed practice release. The first speaking 
 
 ### 4.1 Practice mode: v1 pilot
 
-Practice sets are 5-10 minute activities targeting one paper part and one or two learning objectives. They may permit replay and give feedback after a question or section.
+Practice sets are 5-10 minute activities targeting one paper part and one or two learning objectives. They may permit replay, but show answers and feedback only after the learner submits the complete set.
 
 Pilot release engines, in order:
 
@@ -94,7 +94,7 @@ Until then, call content a `practice set`, `part practice`, or `diagnostic`, nev
 
 | Mode | Replay | Feedback | Timer |
 | --- | --- | --- | --- |
-| Practice | Per-item or per-section replay allowed | Immediate or after section | Optional, never punitive |
+| Practice | Per-item or per-section replay allowed | After submission only | Optional, never punitive |
 | Mock-style | Playback policy set by test template; no arbitrary seek/skip | After submission | Paper-level timer |
 
 Audio, images, and scene metadata required for a set must preload before the learner starts. The UI must display a clear download/error state rather than start with missing media.
@@ -324,6 +324,6 @@ AI may generate structured drafts only. It cannot publish material, approve its 
 1. Confirm the academic lead and the source/version approval process for the imported curriculum references.
 2. Choose the initial pilot topics and grammar targets for the first 50-100 original items.
 3. Decide which five task engines form the first pilot release and whether the pilot includes `scene_matching`.
-4. Define the child-facing feedback policy: immediate, after section, or after submission for each practice template.
+4. Feedback policy is fixed for the pilot: answers and child-facing feedback appear only after submission of the complete practice set.
 5. Define parent consent, retention, access, and deletion policy before storing any speaking recording.
 6. Approve the public wording that describes alignment without implying official Cambridge endorsement.
