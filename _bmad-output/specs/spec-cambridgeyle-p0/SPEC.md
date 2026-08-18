@@ -4,12 +4,13 @@ companions:
   - ../../planning-artifacts/ux-designs/ux-CambridgeYLE-2026-08-17/DESIGN.md
   - ../../planning-artifacts/ux-designs/ux-CambridgeYLE-2026-08-17/EXPERIENCE.md
   - ../../planning-artifacts/architecture/architecture-CambridgeYLE-2026-08-17/ARCHITECTURE-SPINE.md
-  - ../../docs/starters-curriculum-and-assessment-blueprint.md
+  - ../../../docs/starters-curriculum-and-assessment-blueprint.md
+  - ../../../docs/source-manifest.md
 sources:
-  - ../../planning-artifacts/brief-CambridgeYLE-2026-08-17/brief.md
+  - ../../planning-artifacts/prds/prd-CambridgeYLE-2026-08-17/prd.md
 ---
 
-> **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate.
+> **Implementation kernel/index.** The PRD owns product decisions and gates. This SPEC preserves and indexes the build contract; each companion owns its domain detail. It is not implementation-ready while a referenced blocking gate is open.
 
 # CambridgeYLE P0
 
@@ -18,6 +19,8 @@ sources:
 Existing Starters learners need short online practice whose detailed response evidence lets their teacher prepare targeted offline support, rather than inferring gaps from a worksheet total. The centre also needs an admin-supervised demonstration flow for prospective learners without building a public acquisition product.
 
 ## Capabilities
+
+P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze` for assigned practice.
 
 - **CAP-1**
   - **intent:** Admin can create learner, teacher, and admin accounts; manage cohorts/enrolments; and deactivate an account when required.
@@ -33,29 +36,31 @@ Existing Starters learners need short online practice whose detailed response ev
   - **success:** Correctness, answers, and explanations are inaccessible before submission and available only from the saved submitted result afterwards.
 - **CAP-5**
   - **intent:** The system can deterministically score a submitted attempt and preserve immutable item-level evidence.
-  - **success:** A submit request finalizes once, returns the same saved result when retried with its idempotency key, and stores responses, outcomes, attempt timing, retry/media playback data, answer-policy version, and curriculum tags from the published snapshot.
+  - **success:** A submit request finalises once, returns the same saved result when retried with its idempotency key, and stores responses, outcomes, attempt timing, retry/media playback data, answer-policy version, and curriculum tags from the published snapshot.
 - **CAP-6**
-  - **intent:** A teacher can inspect cohort and learner evidence, identify gaps, resolve uncertain outcomes, and assign approved practice.
-  - **success:** A teacher can filter authorized evidence by learner, cohort, paper, part, vocabulary, grammar, topic, time range, and practice set; unresolved outcomes do not affect automatic correctness aggregates.
+  - **intent:** A teacher can inspect cohort and learner evidence, identify gaps, resolve uncertain outcomes, and assign published practice.
+  - **success:** A teacher can filter authorised evidence by learner, cohort, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set; unresolved outcomes do not affect automatic correctness aggregates. Historical access is default-deny until `GATE-HISTORICAL-ACCESS` closes.
 - **CAP-7**
   - **intent:** A content editor can create and review original/licensed/generated content with curriculum, accessibility, media, answer-policy, and provenance validation.
   - **success:** Publish is blocked until an approved question/media version has all required validation/provenance fields, academic approval, and mobile preview; retiring later content does not alter prior attempt results.
 - **CAP-8**
-  - **intent:** An authorized user can assemble approved questions into a practice set and assign it to a learner or cohort.
-  - **success:** Publication atomically creates an immutable set snapshot containing only approved question/media versions, and attempts always use that snapshot rather than current editable content.
+  - **intent:** An authorised user can assemble published question/media versions into a practice set and assign its published snapshot to a learner or cohort.
+  - **success:** Publication atomically creates an immutable set snapshot containing only published question/media versions, and attempts always use that snapshot rather than current editable content.
 - **CAP-9**
   - **intent:** Admin can run a supervised prospective-learner diagnostic using approved practice-set infrastructure.
-  - **success:** An admin creates a pre-provisioned account, assigns an approved set, reviews completed practice evidence with a teacher, and can deactivate the account when it is no longer needed.
+  - **success:** An admin creates a pre-provisioned account, assigns a published set, reviews completed practice evidence with a teacher, and can deactivate the account when it is no longer needed.
 - **CAP-10**
   - **intent:** The PWA communicates connectivity/media readiness and recovers local drafts without retaining sensitive result data in browser storage.
-  - **success:** The application shell and authorized set assets can be cached safely, an offline learner retains a visible draft, and browser caches contain no answer-review, result, or teacher-evidence payload.
+  - **success:** The application shell and authorised set assets can be cached safely, an offline learner retains a visible draft, and browser caches contain no answer-review, result, or teacher-evidence payload.
 
 ## Constraints
 
 - All learner-facing questions, media, scripts, and feedback must be original, licensed, or approved generated content; tags and validation follow the Starters assessment blueprint.
 - A learner receives no correct/incorrect indication, answers, or explanations until submitting the complete practice set. Server-side deterministic scoring uses immutable published snapshots.
 - Product language uses `secure`, `building`, `needs practice`, and `not assessed yet`; it must not show pass/fail, official scores, certificates, or Cambridge shields.
-- P0 uses a responsive web/PWA modular monolith with server-side role/resource authorization, PostgreSQL as system of record, private object storage for media, and browser storage only for open-attempt recovery.
+- P0 uses a responsive web/PWA modular monolith with server-side role/resource authorisation, PostgreSQL as system of record, private object storage for media, and browser storage only for open-attempt recovery.
+- Question, media and practice-set lifecycles are independently versioned; rejection creates a new draft version, retirement blocks future assignment, and immutable published snapshots grandfather active/completed attempts.
+- WCAG 2.2 AA and British English apply to technical artefacts and product copy. `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS`, `GATE-ASSIGNMENT-POLICY`, `GATE-HISTORICAL-ACCESS` and `GATE-DEPLOYMENT` remain owned by the PRD.
 
 ## Non-goals
 
@@ -75,8 +80,6 @@ Existing Starters learners need short online practice whose detailed response ev
 - The P0 visual direction remains a calm, child-friendly learning workspace until centre brand assets are supplied.
 - Production infrastructure remains provider-neutral: one HTTPS Node.js application, managed PostgreSQL, and private S3-compatible object storage.
 
-## Open Questions
+## Gate Trace
 
-- Which 6-8 Starters topics and grammar targets form the first 50-100 original items?
-- Who is the academic lead and what source/version approval process authorizes the imported curriculum references?
-- What public wording may describe skill/format alignment without implying Cambridge endorsement?
+The PRD Decision Register is the sole owner of open decisions. CAP-7/8 are blocked by `GATE-ACADEMIC-SOURCES` and `GATE-CONTENT-PLAN`; public copy by `GATE-PUBLIC-WORDING`; pilot launch by `GATE-DATA-GOVERNANCE`; pilot acceptance by `GATE-PRODUCT-ASSUMPTIONS`; assignment semantics by `GATE-ASSIGNMENT-POLICY`; CAP-6 authorisation by `GATE-HISTORICAL-ACCESS`; and production launch by `GATE-DEPLOYMENT`.

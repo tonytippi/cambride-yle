@@ -1,11 +1,13 @@
 ---
 title: CambridgeYLE MVP Product Brief
-status: draft
+status: superseded
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # CambridgeYLE MVP Product Brief
+
+> **Historical input — superseded.** This brief records early discovery only. The [PRD](../prds/prd-CambridgeYLE-2026-08-17/prd.md) owns current product decisions and gates; do not implement from this file.
 
 ## Product Intent
 
@@ -14,7 +16,7 @@ CambridgeYLE is a responsive web application and installable PWA for young learn
 The first release is not a generic English-learning app and not a replacement for an official exam. Its value is the online-to-offline loop:
 
 ```text
-Student completes focused practice
+Learner completes assigned practice
 -> app records evidence by paper, part, vocabulary, and grammar
 -> teacher sees the learner's recurring gaps
 -> teacher reinforces those gaps in the next offline session
@@ -56,7 +58,7 @@ Within a 4-6 week pilot, a teacher can assign short Starters practice, review ea
 
 ### P0: pilot release
 
-- Responsive student web experience, mobile-first and installable as a PWA.
+- Responsive learner web experience, mobile-first and installable as a PWA.
 - Admin-created accounts and cohort enrolments.
 - Teacher, learner, and admin roles.
 - Approved question bank with `draft -> in_review -> approved -> published -> retired` status.
@@ -106,7 +108,7 @@ Within a 4-6 week pilot, a teacher can assign short Starters practice, review ea
 - Product reporting uses internal practice language such as `secure`, `building`, and `needs practice`; it never presents pass/fail, certificates, or Cambridge shields.
 - A future full Starters-style mock requires all four Listening parts and all five Reading and Writing parts, with the required item counts, timing, and audio policy.
 
-The detailed contract is in `docs/starters-curriculum-and-assessment-blueprint.md`.
+The current curriculum contract is the [Starters curriculum and assessment blueprint](../../../docs/starters-curriculum-and-assessment-blueprint.md).
 
 ## User Flows
 
@@ -115,11 +117,11 @@ The detailed contract is in `docs/starters-curriculum-and-assessment-blueprint.m
 ```text
 Admin-created account
 -> sign in
--> see assigned or recommended practice set
+-> see assigned practice set
 -> preload required assets
 -> complete questions
 -> submit or resume recovered draft
--> see child-friendly feedback and next practice recommendation
+-> see child-friendly post-submission feedback
 -> teacher uses the detailed result offline
 ```
 
@@ -177,17 +179,15 @@ Admin creates temporary or pre-provisioned learner account
 | --- | --- |
 | AI content is unsuitable, ambiguous, or beyond level | AI creates drafts only; validator and academic review are required before publish. |
 | Cambridge copyright or endorsement confusion | Use original assets/content; approved public wording; no official-result claims. |
-| Young learner data is mishandled | Minimum data collection; role-based access; parent consent and retention policy before recording audio. Admin can soft-delete accounts, revoke access, and prevent future login when required. |
+| Young learner data is mishandled | Minimum data collection and role-based access. Account deactivation revokes access while retaining P0 records; policy remains governed by the PRD. |
 | A PWA fails during an activity | Preload essential assets, save draft responses locally where feasible, make connectivity state visible. |
 | Pilot scope expands into an LMS | Keep P0 to accounts, cohorts, practice, progress, and content review. |
 | Sales use becomes a public product flow | Admin-supervised diagnostics only; no self-registration in v1. |
 
-## Open Decisions
+## Historical Open Decisions
 
-1. Which 6-8 Starters topics and grammar targets form the first 50-100 original items?
-2. What parent consent wording, data retention schedule, and deletion process apply before any speaking recording?
-3. What exact public wording may describe YLE alignment without implying Cambridge endorsement?
+This section is intentionally not a decision register. All current open decisions, owners, statuses and gates live only in the PRD Decision Register.
 
-## Next Deliverable
+## Supersession
 
-Create a UX specification for the P0 flows: learner home, practice player for five engines, result screen, cohort dashboard, question editor/review, account creation, and prospective-learner diagnostic setup.
+The discovery sequence represented here is complete. Follow the PRD and README authority map for current artefacts and gates; this historical brief does not prescribe a next deliverable.

@@ -1,8 +1,8 @@
 # Starters Curriculum And Assessment Blueprint
 
-**Status:** Draft for academic and product approval  
-**Scope:** Web responsive/PWA v1, Pre A1 Starters practice; teacher-led speaking in a later v1.x release.  
-**Last reviewed:** 2026-08-17 (feedback policy synchronized with MVP brief)
+**Status:** Current curriculum authority; blocked by `GATE-ACADEMIC-SOURCES` and `GATE-CONTENT-PLAN`
+**Scope:** Responsive web/PWA P0, Pre A1 Starters assigned practice; teacher-led speaking is deferred.
+**Last reviewed:** 2026-08-18
 
 ## 1. Purpose
 
@@ -12,20 +12,26 @@ The product provides original practice material aligned to the skills and task f
 
 The first product goal is to make online practice useful for an offline teacher: every response must produce enough skill, part, vocabulary, and grammar evidence for the teacher to decide what to reinforce in class.
 
+### 1.1 P0 cross-domain invariants
+
+P0 delivers assigned practice through exactly five engines: `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze`. Evidence uses only `secure`, `building`, `needs practice`, and `not assessed yet`. Account removal means explicit deactivation with session revocation and record retention; it never means automatic expiry or purge. These product invariants are repeated here only to define the boundary of curriculum/content work; the PRD remains their normative owner.
+
 ## 2. Source References And Content Policy
 
-### 2.1 Internal references
+### 2.1 Internal references and edition policy
 
+- `docs/cambridge-young-learners-wordlist-2025.md`
+  - Current working reference for Starters vocabulary, names, numbers and cumulative-level rules.
 - `docs/cambridge-young-learners-handbook.md`
   - Starters paper lengths, part counts, task formats, speaking flow, and assessment scale.
 - `docs/cambridge-young-learners-wordlist.md`
-  - Starters vocabulary, names, numbers, grammatical categories, and cumulative level rules.
+  - Historical 2018 reference only. It must not silently fill a gap, discrepancy or citation missing from the 2025 edition.
 
-The imported Word List is labelled "for exams from 2018". The academic lead must confirm that it remains suitable before any public curriculum claim or large-scale content generation.
+`docs/source-manifest.md` exclusively owns provenance, checksums and verification status for these read-only imports. The 2025 edition is the working curriculum reference, not learner-facing content. `GATE-ACADEMIC-SOURCES` blocks content production, review, publication and public curriculum claims until the academic lead verifies the editions, citations and discrepancies.
 
 ### 2.2 Content rules
 
-- All student-facing questions, examples, scripts, illustrations, recordings, and feedback are original, licensed, or generated for this product and approved by a teacher.
+- All learner-facing questions, examples, scripts, illustrations, recordings, and feedback are original, licensed, or generated for this product and approved by a teacher.
 - The app may say that practice is aligned to relevant YLE skills and formats only after legal/academic wording is approved.
 - The app must not present results as a Cambridge result, certificate, shield, pass, or fail.
 - Imported vocabulary data is an internal curriculum reference. The product must not expose or export the source word list as a downloadable branded feature without permission.
@@ -66,23 +72,19 @@ Speaking is not in the first self-directed practice release. The first speaking 
 
 ## 4. Delivery Modes And Release Boundaries
 
-### 4.1 Practice mode: v1 pilot
+### 4.1 Assigned practice: P0 pilot
 
 Practice sets are 5-10 minute activities targeting one paper part and one or two learning objectives. They may permit replay, but show answers and feedback only after the learner submits the complete set.
 
-Pilot release engines, in order:
+P0 contains exactly these five engines:
 
 1. `picture_true_false`
 2. `picture_yes_no`
 3. `audio_picture_choice`
 4. `audio_note_taking`
 5. `word_bank_cloze`
-6. `scene_matching`
-7. `picture_word_unscramble`
-8. `picture_story_short_answer`
-9. `audio_colour_scene`
 
-The order is implementation priority, not a claim that later formats are less important academically. `audio_colour_scene` is deferred only because it needs a touch-safe, semantically gradable scene interaction.
+The remaining Starters engines (`scene_matching`, `picture_word_unscramble`, `picture_story_short_answer`, and `audio_colour_scene`) are P1. Speaking, including teacher-led speaking observations, is not part of P0. The P0/P1 split is a product boundary, not a claim that deferred formats are less important academically.
 
 ### 4.2 Mock-style mode: later milestone
 
@@ -288,17 +290,19 @@ These records support teaching decisions. They are not Cambridge scores and must
 
 ## 9. Content Workflow
 
+Question, media and practice-set publication are three separate state machines. Rejection always records actor, reason and time and returns the record to a new editable version; it never mutates a published version.
+
 ```text
-Author or AI creates a draft
--> schema and curriculum validator runs
--> content editor checks task, answer, grammar, vocabulary, and media
--> academic lead approves
--> mobile preview passes
--> publish
--> monitor response quality and retire/revise weak items
+Question version: draft -> in_review -> approved -> published -> retired
+Media version:    draft -> in_review -> approved -> published -> retired
+Practice set:     draft -> in_review -> approved -> published -> retired
+Review decision:  in_review -> rejected -> new draft version
+Revision:         any editable source -> new version; published snapshot unchanged
 ```
 
-AI may generate structured drafts only. It cannot publish material, approve its own output, or determine correctness of student answers.
+Publishing a set atomically snapshots only published question and media versions. Retirement prevents future assignment/publication but grandfathers every existing assignment, active attempt and completed result against its immutable snapshot. A revised source can be published only as a new version.
+
+AI may generate structured drafts only. It cannot publish material, approve its own output, or determine correctness of learner answers.
 
 ## 10. Acceptance Criteria
 
@@ -319,11 +323,6 @@ AI may generate structured drafts only. It cannot publish material, approve its 
 - The result report breaks down evidence by paper, part, vocabulary/grammar target, and topic.
 - Academic lead signs off the format and content QA checklist before learner access.
 
-## 11. Decisions Needed Before Implementation
+## 11. Governed Gates
 
-1. Confirm the academic lead and the source/version approval process for the imported curriculum references.
-2. Choose the initial pilot topics and grammar targets for the first 50-100 original items.
-3. Decide which five task engines form the first pilot release and whether the pilot includes `scene_matching`.
-4. Feedback policy is fixed for the pilot: answers and child-facing feedback appear only after submission of the complete practice set.
-5. Define parent consent, retention, access, and deletion policy before storing any speaking recording.
-6. Approve the public wording that describes alignment without implying official Cambridge endorsement.
+The PRD Decision Register is the only normative inventory of open decisions. This blueprint is affected by `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN` and `GATE-PUBLIC-WORDING`; it does not duplicate or close them. Feedback remains post-submit only, and the five-engine P0 boundary above is fixed.

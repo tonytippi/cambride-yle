@@ -1,11 +1,11 @@
 ---
 name: CambridgeYLE
 description: A calm, child-friendly P0 practice workspace that makes focused English practice clear for learners and evidence legible for teachers.
-status: final
+status: current-with-open-gates
 sources:
-  - ../../brief-CambridgeYLE-2026-08-17/brief.md
+  - ../../prds/prd-CambridgeYLE-2026-08-17/prd.md
   - ../../../../docs/starters-curriculum-and-assessment-blueprint.md
-updated: 2026-08-17
+updated: 2026-08-18
 colors:
   surface-base: '#F7FAF7'
   surface-raised: '#FFFFFF'
@@ -17,7 +17,7 @@ colors:
   primary-foreground: '#FFFFFF'
   secondary: '#2B6CB0'
   secondary-foreground: '#FFFFFF'
-  focus: '#D98A19'
+  focus: '#8A5200'
   positive: '#287D57'
   caution: '#A96612'
   danger: '#B63A3A'
@@ -85,6 +85,8 @@ components:
 
 # CambridgeYLE Design Spine
 
+> `DESIGN.md` owns visual rules only. Product decisions and gates remain in the PRD; the current unbranded direction remains an assumption under `DEC-BRAND`.
+
 ## Brand & Style
 
 CambridgeYLE is a quiet practice room, not a game arcade and not a high-stakes exam portal. The learner should feel that the next question is understandable and achievable; the teacher should feel that the evidence is orderly and dependable. Use friendly illustration space and direct language, while letting questions, audio, and pictures remain the centre of attention.
@@ -96,7 +98,7 @@ This is an initial visual direction, marked as an assumption until centre brand 
 - **Soft green surfaces** `{colors.surface-base}` and `{colors.surface-soft}` make a long practice flow calm without competing with learning media.
 - **Deep green primary** `{colors.primary}` denotes the main forward action, including starting and submitting a set. It is not a correctness indicator.
 - **Blue** `{colors.secondary}` supports neutral information, such as audio preparation and `building` evidence. It does not mean a learner is right or wrong.
-- **Amber** `{colors.focus}` supports attention and `needs practice`; it is never paired with warning language that could shame a child.
+- **Deep amber** `{colors.focus}` provides a visible focus indicator against adjacent light surfaces and supports attention; it is never the sole carrier of meaning or paired with language that could shame a child. `needs practice` uses the separate `{colors.caution}` semantic token.
 - **Green positive** `{colors.positive}` is reserved for post-submission correct-answer comparison and `secure` evidence. **Red** `{colors.danger}` is reserved for destructive admin actions and errors, never a learner's wrong answer.
 
 ## Typography
@@ -120,10 +122,10 @@ Use `{rounded.lg}` for answer options, media cards, and learning surfaces. Use `
 ## Components
 
 - **Practice header:** task name, question position, optional exit action, and a text progress indicator such as `Question 3 of 5`. No score appears before submission.
-- **Answer option:** a large, entire-row touch target. Selected state adds a strong outline and a textual selected state for assistive technology; color alone never carries selection.
+- **Answer option:** a large, entire-row touch target. Selected state adds a strong outline and a textual selected state for assistive technology; colour alone never carries selection.
 - **Audio control:** clear play/replay button, transcript unavailable to learners when it reveals the answer, and an explicit remaining-replays count only if a template limits replay.
 - **Result evidence card:** always uses product-owned labels: `secure`, `building`, `needs practice`, or `not assessed yet`. It never displays pass/fail, a certificate, shield, or an official score.
-- **Destructive dialog:** account/data deletion uses `{colors.danger}`, explains the consequence, and requires an explicit confirmation. It never appears in learner flows.
+- **Deactivation dialog:** account deactivation uses `{colors.danger}`, explains access revocation and P0 record retention, and requires an explicit named confirmation. It never implies deletion or purge and never appears in learner flows.
 
 ## Do's and Don'ts
 
@@ -132,5 +134,5 @@ Use `{rounded.lg}` for answer options, media cards, and learning surfaces. Use `
 | Make one question and one response action visually dominant | Put competing tips, score widgets, or unrelated recommendations beside a question |
 | Use original, accessible learning media | Recreate or closely imitate protected Cambridge pages, illustrations, scripts, or layouts |
 | Reserve correctness styling for after submission | Reveal right/wrong feedback while a practice set is in progress |
-| Pair every state color with a plain-language label | Depend on color, icons, or facial expressions alone |
+| Pair every state colour with a plain-language label | Depend on colour, icons, or facial expressions alone |
 | Use calm progress language such as `Continue` and `Review answers` | Use streaks, rankings, confetti, trophies, or pass/fail language |

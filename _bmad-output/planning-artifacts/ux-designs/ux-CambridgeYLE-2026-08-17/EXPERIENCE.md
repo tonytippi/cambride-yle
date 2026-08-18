@@ -1,39 +1,41 @@
 ---
 name: CambridgeYLE
-status: final
+status: current-with-open-gates
 sources:
-  - ../../brief-CambridgeYLE-2026-08-17/brief.md
+  - ../../prds/prd-CambridgeYLE-2026-08-17/prd.md
   - ../../../../docs/starters-curriculum-and-assessment-blueprint.md
 design: DESIGN.md
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # CambridgeYLE Experience Spine
 
+> This document owns behaviour; `DESIGN.md` owns visual rules and the PRD owns decisions/gates. It does not close `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS` or `GATE-HISTORICAL-ACCESS`.
+
 ## Foundation
 
-Responsive web application and installable PWA. Learner practice is mobile-first; teacher, admin, and content-editor work is efficient on desktop but remains usable on tablets. `DESIGN.md` owns visual identity; this document owns behavior. The P0 UI system is component-based but no library is selected yet.
+Responsive web application and installable PWA. Learner practice is mobile-first; teacher, admin, and content-editor work is efficient on desktop but remains usable on tablets. `DESIGN.md` owns visual identity; this document owns behaviour. The P0 UI system is component-based but no library is selected yet.
 
-The product is a Starters practice application, not an official exam service. It shows only original, approved content and uses product-owned progress labels. Listening and Reading/Writing are deterministically scored. Speaking, parent accounts, self-registration, payment, and a full mock are outside P0.
+The product is a Starters practice application, not an official exam service. It shows only original, approved content and uses only the evidence states `secure`, `building`, `needs practice`, and `not assessed yet`. Listening and Reading/Writing are deterministically scored. Speaking, parent accounts, self-registration, payment, and a full mock are outside P0.
 
 ## Information Architecture
 
 | Surface | Reached from | Purpose |
 | --- | --- | --- |
 | Sign in | App entry | Authenticate an admin-created learner, teacher, or admin account. |
-| Learner home | Sign in, learner navigation | Show assigned/recommended practice sets, resumable drafts, and recent completed results. |
+| Learner home | Sign in, learner navigation | Show assigned practice sets, resumable drafts, and recent completed results. |
 | Practice preparation | Learner home | Confirm media preload and readiness before a set begins. |
-| Practice player | Preparation or recovered draft | Complete one approved practice set without seeing answers or correctness. |
+| Practice player | Preparation or recovered draft | Complete one assigned, published practice set without seeing answers or correctness. |
 | Submit confirmation | Practice player | Make the learner intentionally finish the complete set. |
 | Result summary | Submission | Show completed status, product-owned evidence labels, and answer-review entry point. |
 | Answer review | Result summary | Compare each submitted response with the approved answer after submission. |
 | Teacher cohort dashboard | Teacher navigation | Identify patterns by cohort, learner, paper, part, and language target. |
 | Learner evidence detail | Cohort dashboard | Inspect a learner's completed sets and item-level evidence. |
-| Assignment flow | Teacher dashboard | Assign an approved set to one learner or cohort. |
-| Admin accounts and cohorts | Admin navigation | Create, edit, enrol, and delete accounts; manage cohorts. |
+| Assignment flow | Teacher dashboard | Assign a published set version to one learner or cohort. |
+| Admin accounts and cohorts | Admin navigation | Create, edit, enrol, and deactivate accounts; manage cohorts. |
 | Content library | Admin navigation | Search/filter approved and unpublished questions and practice sets. |
 | Question editor and review | Content library | Author, validate, preview, review, publish, retire a question. |
-| Practice-set composer | Content library | Assemble only approved questions into an assigned or diagnostic set. |
+| Practice-set composer | Content library | Assemble only published question/media versions into a set version; assign only after set publication. |
 | Diagnostic setup | Admin navigation | Create a supervised prospective-learner account and assign a diagnostic practice set. |
 
 Learner navigation is a simple home-first header. Teacher/admin navigation is a labelled left rail on desktop and a labelled menu sheet on narrow screens. A user sees only surfaces allowed by their role. Dialogs do not stack.
@@ -49,7 +51,7 @@ Microcopy is short, literal, and encouraging without being performative. Brand p
 | `Ready to submit? You will see your answers next.` | `Final chance to pass!` |
 | `Needs practice: numbers in Listening Part 2.` | `Weak at listening.` |
 | `This is practice feedback, not an official exam result.` | `You passed Starters.` |
-| `Delete Minh's account? This also removes their diagnostic data.` | `Are you sure?` |
+| `Deactivate Minh's account? Sign-in will stop; P0 records will be retained.` | `Delete Minh's account?` |
 
 ## Component Patterns
 
@@ -61,22 +63,22 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Media readiness panel | Practice preparation | Lists required audio/image downloads. `Start` stays unavailable until essentials are available; retry is explicit on failure. |
 | Practice header | Player | Shows question position and `Save and leave`. It does not expose score, correctness, or answers. |
 | Choice/boolean/yes-no input | Player | Exactly one answer selected; learner can change it until submission. Selection is announced and remains visible. |
-| Short text input | Note-taking/cloze | Preserves entered text locally; normalized deterministic scoring occurs only at submission. |
+| Short text input | Note-taking/cloze | Preserves entered text locally; normalised deterministic scoring occurs only at submission. |
 | Audio player | Listening | Has accessible play/replay action. Playback events are stored. Template playback rules determine replay limits; seeking is not offered unless a template permits it. |
 | Submit confirmation | Player | States answered/unanswered count. `Submit practice` is available only after an explicit confirmation; unanswered items remain permitted and are recorded as unanswered. |
 | Answer-review row | Post-submission only | Shows prompt/media reference, learner response, approved answer, correct/incorrect/needs-teacher-review result, and approved explanation. |
-| Evidence filter | Teacher surfaces | Filters paper, part, vocabulary, grammar, topic, time range, and practice set. Filters update summaries and drill-down together. |
-| Status workflow control | Editor | Allows only `draft -> in_review -> approved -> published -> retired`; approval and publish require required validation fields and reviewer identity. |
-| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Soft-deletes the account, revokes active sessions, and prevents future login only after explicit confirmation; action is audit logged. |
+| Evidence filter | Teacher surfaces | Filters learner, cohort, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set. Filters update summaries and drill-down together. |
+| Status workflow control | Editor | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers existing assignments and attempts. |
+| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains P0 practice/diagnostic records only after explicit named confirmation; action is audit logged. |
 
 ## Task Engine Behavior
 
-| Engine | Learner action | Pre-submission behavior | Post-submission review |
+| Engine | Learner action | Pre-submission behaviour | Post-submission review |
 | --- | --- | --- | --- |
 | `picture_true_false` | Choose true or false for a picture statement | Choice may change; no correctness response | Submitted choice, approved answer, explanation tied to picture/statement |
 | `picture_yes_no` | Choose yes or no for a picture statement | Choice may change; no correctness response | Submitted choice, approved answer, explanation |
 | `audio_picture_choice` | Replay approved audio and choose A/B/C picture | Audio policy enforced; selection may change | Submitted option, approved option, explanation |
-| `audio_note_taking` | Replay approved audio and enter a name/number | Entry retained; no spelling correction or hint | Normalized result; show accepted answer; `needs teacher review` when policy requires |
+| `audio_note_taking` | Replay approved audio and enter a name/number | Entry retained; no spelling correction or hint | Normalised result; show accepted answer; `needs teacher review` when policy requires |
 | `word_bank_cloze` | Select/copy a word into each blank | Entries may change; no partial correctness | Completed text, approved mapping, explanation per blank or passage |
 
 ## State Patterns
@@ -86,9 +88,13 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | First learner visit | Learner home | Explain that practice answers appear after a completed set. Show assigned sets or a clear empty state. |
 | No assigned practice | Learner home | `No practice set is ready yet.` Do not fabricate recommendations. |
 | Draft available | Learner home | One `Resume` action with last saved time; `Start again` requires confirmation and preserves prior submitted attempts. |
+| Draft changed elsewhere | Learner home/player | A stale revision from another tab/device is not merged or overwritten. Show `This practice changed somewhere else`, preserve the visible unsent input separately, and offer `Reload latest` or `Leave`. |
+| Account switch or sign-out | All learner surfaces | Clear the previous account's authorised media and draft namespace before showing another account. A draft/cache key mismatch is blocked and never attached to the new learner. |
 | Preload in progress | Preparation | Show each essential asset as preparing; do not begin with absent media. |
 | Preload failure | Preparation | Identify failed asset type, offer retry, and provide `Leave` without losing home state. |
 | Offline during practice | Player | Retain responses locally and show a persistent plain-language offline state. Submission waits until a server connection is available unless a later product decision adds queued submission. |
+| Offline at submit | Submit confirmation | Keep the attempt open and the verified draft visible. Explain that reconnection is required; do not queue submission or show a partial result. |
+| Media authorisation expires mid-attempt | Player | Preserve the open draft, pause only the affected media interaction, request a fresh authorised URL after reconnect/authentication, and offer retry or `Save and leave`; never count a failed refresh as a replay. |
 | Save/recovery error | Player | Keep the visible answer; show retry state. Never claim it is saved if it is not. |
 | Unanswered questions | Submit confirmation | State count and provide `Review questions` or `Submit anyway`; no forced answer. |
 | Scoring in progress | Result transition | Show a brief non-blocking completion state. Do not expose an incomplete score. |
@@ -111,13 +117,13 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 
 ## Accessibility Floor
 
-- Meet WCAG 2.2 AA. Contrast decisions follow `DESIGN.md`; all state color has visible text and programmatic state.
+- Meet WCAG 2.2 AA. Contrast decisions follow `DESIGN.md`; all state colour has visible text and programmatic state.
 - Learner controls have minimum 48 by 48 CSS pixel targets and generous spacing. Picture options use labels such as `Picture A` rather than position-only instructions.
 - Keyboard order follows the instructional reading order. Focus is visible, never trapped outside an open dialog, and returns to its trigger when closed.
 - Screen readers announce question number, task instruction, selected answer, audio state, required input constraints, save status, and result status.
 - Provide alternative text for teacher/admin review. Do not expose learner-facing alt text, transcripts, or labels that reveal an answer; offer an equivalent approved accessible alternative task where media is essential.
 - Short answer fields state expected input, for example `Write one number` or `Write one word`; errors after submission explain the accepted answer without ridicule.
-- Respect reduced motion and user zoom. No critical task depends on color perception, fine pointer precision, or audio alone without an approved equivalent accommodation.
+- Respect reduced motion and user zoom. No critical task depends on colour perception, fine pointer precision, or audio alone without an approved equivalent accommodation.
 
 ## Responsive & Platform
 
@@ -158,7 +164,7 @@ Failure: an audio asset fails before start -> preparation names the problem and 
 3. She filters the target to `numbers` and opens Linh's evidence detail.
 4. The detail shows submitted name/number responses, attempt times, audio replay events, and any item marked `needs teacher review`.
 5. **Climax:** Mai identifies a concrete offline activity: number dictation with extra support for two learners, instead of rechecking every home worksheet manually.
-6. She assigns an approved follow-up set to the cohort. It appears on learner home; no live monitoring is expected.
+6. She assigns a published follow-up set to the cohort. It appears on learner home; no live monitoring is expected.
 
 Failure: no completed data matches the filter -> dashboard says there is not enough completed evidence and allows Mai to reset filters rather than implying a weakness.
 
@@ -168,14 +174,14 @@ Failure: no completed data matches the filter -> dashboard says there is not eno
 2. The editor shows its required task metadata, answer policy, target vocabulary/grammar, original media, and validation flags.
 3. An fixes missing tags and sends the item to academic review. The reviewer approves it.
 4. An uses the phone-width preview to verify that image regions, audio controls, and answer options are usable.
-5. An publishes the question, composes an approved-only practice set, and assigns it to Mai's cohort.
+5. An publishes the question/media versions, composes and publishes an immutable set version, and assigns it to Mai's cohort.
 6. **Climax:** The set is available to learners with all required media and deterministic answer policy attached; the teacher receives evidence that can be used offline.
 
 Failure: validator finds vocabulary outside the allowed Starters set or missing media -> publish remains unavailable and the editor identifies the field needing review.
 
-### Flow 4 - Supervised diagnostic and deletion (Quang, centre admin, with a prospective learner)
+### Flow 4 - Supervised diagnostic and deactivation (Quang, centre admin, with a prospective learner)
 
-1. Quang creates a temporary learner account and assigns an approved diagnostic practice set.
+1. Quang creates a temporary learner account and assigns a published diagnostic practice set.
 2. The learner completes it under supervision and receives post-submission practice feedback.
 3. Quang or a teacher reviews implemented-part evidence to support a placement conversation, without presenting an official result.
 4. **Climax:** If the family does not continue, Quang opens the account record, confirms the named deactivation action, and immediately prevents future sign-in.

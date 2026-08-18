@@ -1,18 +1,23 @@
 ---
 title: CambridgeYLE P0 PRD
-status: final
+status: approved-with-open-gates
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-18
 sources:
   - ../../brief-CambridgeYLE-2026-08-17/brief.md
+  - ../../../../docs/starters-curriculum-and-assessment-blueprint.md
+  - ../../../../docs/source-manifest.md
+derived_artifacts:
   - ../../../specs/spec-cambridgeyle-p0/SPEC.md
   - ../../ux-designs/ux-CambridgeYLE-2026-08-17/EXPERIENCE.md
   - ../../ux-designs/ux-CambridgeYLE-2026-08-17/DESIGN.md
   - ../../architecture/architecture-CambridgeYLE-2026-08-17/ARCHITECTURE-SPINE.md
-  - ../../../../docs/starters-curriculum-and-assessment-blueprint.md
+  - ../../epics.md
 ---
 
 # CambridgeYLE P0
+
+> **Product authority.** This PRD owns product scope, requirements, decision status and release gates. The SPEC indexes implementation contracts; the curriculum, architecture, experience and design companions own their respective domain detail. Epics only decompose and trace. The historical brief and addendum are superseded. This suite is not implementation-ready or pilot-ready while a blocking gate below remains open.
 
 ## Product Decision
 
@@ -24,7 +29,7 @@ This product is practice support, not an official Cambridge examination service.
 
 ## Problem And Opportunity
 
-Teachers currently receive home-practice scores without the detail needed to decide whether a learner needs help with a particular paper part, vocabulary/grammar target, spelling, names, numbers, or listening behavior. This turns offline intervention into broad rechecking rather than focused teaching.
+Teachers currently receive home-practice scores without the detail needed to decide whether a learner needs help with a particular paper part, vocabulary/grammar target, spelling, names, numbers, or listening behaviour. This turns offline intervention into broad rechecking rather than focused teaching.
 
 The P0 opportunity is an online-to-offline evidence loop:
 
@@ -36,7 +41,7 @@ Learner completes short practice
 -> learner practises again and progress is visible
 ```
 
-The centre may also use an approved practice set as a supervised diagnostic demonstration for a prospective learner. This supports a placement conversation; it is not a public acquisition, registration, or admissions workflow.
+The centre may also use a published practice set as a supervised diagnostic demonstration for a prospective learner. This supports a placement conversation; it is not a public acquisition, registration, or admissions workflow.
 
 ## Pilot Outcome And Measures
 
@@ -53,11 +58,11 @@ The pilot succeeds when:
 
 Measurement definitions:
 
-- **Weekly completion:** completed distinct assigned sets / distinct assigned sets due in that pilot week. A learner with an active centre enrolment for the entire week is included; a formally deactivated or unenrolled learner is excluded from subsequent weeks. The pilot owner exports this metric weekly.
-- **Actionable gap coverage:** for each active learner, the assigned teacher records at least two evidence-backed gaps. A gap names paper/part and a language target, and links to the supporting dashboard drill-down. `Not assessed yet` is recorded with its reason as a separate coverage exception and does not count toward the two-gap success criterion; the pilot owner reports its count and resolves whether missing assignments, completion, or content coverage caused it.
-- **Teacher time:** each pilot teacher records the minutes spent checking home practice for one baseline week before P0 and weekly during P0. Compare the per-teacher weekly median; collect a short free-text explanation for material changes in workload.
-- **Item ambiguity:** an academic lead logs each published item correction and its reason. The measure is published items without an ambiguity correction / published items used by at least one learner during the pilot.
-- **Critical completion issue:** a confirmed incident that prevents an assigned learner from signing in, starting essential media, retaining an open answer, submitting after reconnection, or accessing the submitted result. The pilot owner maintains the incident log.
+- **Weekly completion:** completed distinct assigned sets / distinct assigned sets due in that pilot week. A learner with an active centre enrolment for the entire week is included; a formally deactivated or unenrolled learner is excluded from subsequent weeks. `GATE-ASSIGNMENT-POLICY` must define due/status/timezone semantics before this denominator is implemented. The pilot owner calculates it from the system of record; a product analytics/export feature is not added to P0.
+- **Actionable gap coverage:** for each active learner, the assigned teacher records at least two evidence-backed gaps in the pilot's external operational worksheet. A gap names paper/part and a language target and records the supporting dashboard drill-down reference. `Not assessed yet` is a separate coverage exception and does not count. An in-product intervention/gap record is not a P0 capability.
+- **Teacher time:** each pilot teacher records minutes in an external pilot log for one baseline week and weekly during P0. Compare the per-teacher weekly median and collect a short explanation for material changes; this does not add a time-tracking feature.
+- **Item ambiguity:** the academic lead maintains an external correction log. The measure is published items without an ambiguity correction / published items used by at least one learner during the pilot.
+- **Critical completion issue:** a confirmed incident that prevents an assigned learner from signing in, starting essential media, retaining an open answer, submitting after reconnection, or accessing the submitted result. The pilot owner maintains the external incident log; incident-management tooling is outside P0.
 
 Counter-metrics to monitor:
 
@@ -92,7 +97,7 @@ Learner flow: sign in -> see assigned practice or recovered draft -> prepare ess
 
 ### Teacher Evidence
 
-Teachers can review completed evidence by learner, cohort, paper, part, vocabulary target, grammar target, topic, practice set, and time range. The cohort view must state a concrete `needs practice` gap with affected learner count and drill-down to submitted responses, not require a teacher to infer an intervention from raw analytics.
+Teachers can review completed evidence by learner, cohort, paper, part, vocabulary target, grammar target, spelling, names, numbers, colours, positions, topic, practice set, and time range. The cohort view uses only the evidence states `secure`, `building`, `needs practice`, and `not assessed yet`; it must state a concrete `needs practice` gap with affected learner count and drill-down to submitted responses, not require a teacher to infer an intervention from raw analytics.
 
 Teachers may resolve controlled responses marked `needs_teacher_review`; the automatic result and the teacher's reason remain auditable. Unresolved outcomes are excluded from automatic correctness aggregates.
 
@@ -100,13 +105,13 @@ Teachers may resolve controlled responses marked `needs_teacher_review`; the aut
 
 ### Content, Assignment, And Accounts
 
-Admins create learner, teacher, and admin accounts; manage cohorts/enrolments; and explicitly deactivate accounts. For P0, admin is the content-editor and academic-approval role: an admin can author, validate, review, approve, preview on a phone-width layout, publish, retire, and compose content. Each lifecycle transition records its actor and timestamp; an academic lead approves documented validation exceptions. [ASSUMPTION] The centre will name the academic lead before content production. P0 permits a qualified admin to author and approve an item, but audit records must make that visible for pilot governance.
+Admins create learner, teacher, and admin accounts; manage cohorts/enrolments; and explicitly deactivate accounts. An authorised content editor can author, validate, preview on a phone-width layout, publish, retire, and compose content; an academic reviewer approves documented validation exceptions. Each lifecycle transition records its actor and timestamp. `GATE-ACADEMIC-SOURCES` must name and verify the academic lead before content production, review or publication, and `GATE-CONTENT-PLAN` decides whether pilot self-approval is permitted with a documented exception.
 
-The content lifecycle is `draft -> in_review -> approved -> published -> retired`. AI-originated material is always a draft until a human content and academic review completes.
+Question, media and practice-set publication have separate versioned lifecycles: `draft -> in_review -> approved -> published -> retired`, plus `in_review -> rejected -> new draft version`. Revision never mutates a published version; retirement blocks future assignment but grandfathers existing assignments and active/completed attempts through immutable snapshots. AI-originated material is always a draft until human content and academic review completes.
 
 ### Supervised Diagnostic
 
-An admin can create a temporary or pre-provisioned learner account and assign an approved set under centre supervision. The resulting evidence is reviewed through the normal teacher evidence surfaces using neutral practice wording. The account can later be deactivated; P0 does not automatically expire or irreversibly purge it.
+An admin can create a temporary or pre-provisioned learner account and assign a published set under centre supervision. The resulting evidence is reviewed through the normal teacher evidence surfaces using neutral practice wording. The account can later be deactivated; P0 does not automatically expire or irreversibly purge it.
 
 ## User Journeys
 
@@ -118,17 +123,17 @@ If essential media fails before start, Linh sees which asset failed and can retr
 
 ### UJ-2: Mai Plans An Intervention
 
-Mai, a Starters teacher, opens her cohort dashboard twenty minutes before class. She filters completed attempts from the last week and sees that several learners need practice with numbers in Listening Part 2. She opens Linh's detail to inspect submitted name/number responses, attempt time, playback events, and uncertain outcomes. Mai plans a number-dictation activity for the affected learners, then assigns an approved follow-up set to the cohort.
+Mai, a Starters teacher, opens her cohort dashboard twenty minutes before class. She filters completed attempts from the last week and sees that several learners need practice with numbers in Listening Part 2. She opens Linh's detail to inspect submitted name/number responses, attempt time, playback events, and uncertain outcomes. Mai plans a number-dictation activity for the affected learners, then assigns a published follow-up set to the cohort.
 
 If no completed practice matches a filter, the dashboard shows `not assessed yet`, not a learning deficiency.
 
 ### UJ-3: An Publishes Safe Practice
 
-An, the admin/content editor, authors a draft question with target tags, answer policy, original media, and provenance. Validation reports any missing or out-of-level data. An sends a valid draft to academic review, previews it in a phone-width surface, and publishes it only after approval. An then composes approved questions into a short set and assigns it to Mai's cohort. Learners receive an immutable approved version even if source content is later edited or retired.
+An, the admin/content editor, authors a draft question with target tags, answer policy, original media, and provenance. Validation reports any missing or out-of-level data. An sends a valid draft to academic review, previews it in a phone-width surface, and publishes it only after approval. An then composes published question/media versions into a set, publishes the immutable set version and assigns it to Mai's cohort. Source revision or retirement cannot alter that snapshot.
 
 ### UJ-4: Quang Runs A Diagnostic
 
-Quang, a centre admin, creates a prospective learner account and assigns an approved practice set while supervising the session. After submission, Quang or a teacher reviews evidence for implemented parts to support a placement conversation. If the family does not continue, Quang explicitly confirms deactivation, ending future access while retaining P0 records and audit metadata according to policy.
+Quang, a centre admin, creates a prospective learner account and assigns a published practice set while supervising the session. After submission, Quang or a teacher reviews evidence for implemented parts to support a placement conversation. If the family does not continue, Quang explicitly confirms deactivation, ending future access while retaining P0 records and audit metadata according to policy.
 
 ## Functional Requirements
 
@@ -136,13 +141,13 @@ Quang, a centre admin, creates a prospective learner account and assigns an appr
 
 - **FR-1.** An admin can create learner, teacher, and admin accounts, assign their roles, and provision their sign-in access.
 - **FR-2.** An admin can create cohorts, enrol or remove learners, and assign teachers to cohorts.
-- **FR-3.** A signed-in user can access only role-authorized surfaces and resource scopes; a teacher cannot access another cohort's evidence and a learner cannot access another learner's records.
+- **FR-3.** A signed-in user can access only role-authorised surfaces and resource scopes; a teacher cannot access another cohort's evidence and a learner cannot access another learner's records.
 - **FR-4.** An admin can explicitly deactivate an account after a named confirmation. Deactivation revokes active sessions, blocks future sign-in, preserves practice/diagnostic records, and records an audit event without learner-response content.
 
 ### Learner Practice
 
 - **FR-5.** A learner can sign in, view assigned published practice sets and a recoverable open draft, and see title, paper/part, estimated duration, and `Start`, `Resume`, or `Review` actions.
-- **FR-6.** Before starting, the learner can verify all essential authorized media assets. The system blocks attempt creation until essential media is available and identifies failed assets with retry and leave actions.
+- **FR-6.** Before starting, the learner can verify all essential authorised media assets. The system blocks attempt creation until essential media is available and identifies failed assets with retry and leave actions.
 - **FR-7.** A learner can complete the five P0 task engines, change an open response, and use audio only under the snapshot playback policy. P0 supports `unlimited_replay` and `max_replays` policies; an item declares the allowed replay count, seeking is unavailable unless explicitly allowed, the remaining replay count is displayed when limited, and every play/replay event is stored with the open attempt.
 - **FR-8.** The product must not show correctness, answers, explanations, predicted scores, or score-like UI before final submission.
 - **FR-9.** The learner can save and leave an open practice set without silent loss. The application preserves a verified local draft where available and communicates offline, save, and recovery states honestly.
@@ -153,32 +158,32 @@ Quang, a centre admin, creates a prospective learner account and assigns an appr
 
 - **FR-12.** The system deterministically scores all implemented Listening and Reading/Writing items against the versioned answer policy attached to the submitted item.
 - **FR-13.** The system stores item-level response, automatic outcome, submitted time, playback/retry evidence, answer-policy version, and curriculum tags needed for later analysis, including language-target dimensions for vocabulary, grammar, spelling, names, numbers, colours, and positions where applicable.
-- **FR-14.** The system reports only `correct`, `incorrect`, `unanswered`, or `needs_teacher_review` as automatic outcomes and does not silently treat uncertain short answers as correct. A submission retry using the same idempotency key returns the saved final result; a different key after finalization and every post-submission write are rejected with a stable conflict result.
+- **FR-14.** The system reports only `correct`, `incorrect`, `unanswered`, or `needs_teacher_review` as automatic outcomes and does not silently treat uncertain short answers as correct. A submission retry using the same idempotency key returns the saved final result; a different key after finalisation and every post-submission write are rejected with a stable conflict result.
 - **FR-15.** A teacher can view completed evidence by cohort and learner; filter by learner, cohort, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set; and drill down to submitted item responses.
 - **FR-16.** The teacher dashboard presents an actionable gap statement with evidence state, affected learner count, paper/part, and relevant language target. It does not issue AI lesson recommendations in P0.
-- **FR-17.** An authorized teacher can resolve `needs_teacher_review` outcomes with a reason. The system preserves the automatic outcome and recalculates affected evidence from the effective outcome.
-- **FR-18.** An authorized teacher can assign a published practice set to an eligible learner or cohort.
+- **FR-17.** An authorised teacher can resolve `needs_teacher_review` outcomes with a reason. The system preserves the automatic outcome and recalculates affected evidence from the effective outcome.
+- **FR-18.** An authorised teacher can assign a published practice set to an eligible learner or cohort.
 
 ### Content And Publication
 
 - **FR-19.** A content editor can author question and media drafts with level, paper, part, task type, prompt/options, answer policy, a primary learning-objective identifier, supporting curriculum tags, estimated duration, accessibility metadata, and immutable provenance metadata.
 - **FR-20.** Before review or publication, validation identifies missing tags, answer keys/alternatives, required media, approved names/numbers, task-template limits, out-of-level vocabulary/grammar, provenance gaps, and accessibility issues.
-- **FR-21.** Only an authorized human can move valid content through the lifecycle. Generated content cannot bypass content review, academic approval, or phone-width preview.
-- **FR-22.** An authorized content editor can publish approved questions/media and compose only approved content into a 5-10 minute, single-paper/part practice set. Composition validates that the set contains one or two distinct primary learning-objective identifiers and reports a publish-blocking finding otherwise.
+- **FR-21.** Only an authorised human can move valid content through the lifecycle. Generated content cannot bypass content review, academic approval, or phone-width preview.
+- **FR-22.** An authorised content editor can publish approved question/media versions and compose only published versions into a 5-10 minute, single-paper/part practice set. Composition validates that the set contains one or two distinct primary learning-objective identifiers and reports a publication-blocking finding otherwise.
 - **FR-23.** Publication preserves an immutable snapshot of the question, media, answer policy, feedback, tags, accessibility metadata, and provenance. Later source edits or retirement cannot alter an active or completed attempt.
 - **FR-24.** An academic lead can run a readiness view that reports coverage across all P0 engines, paper/part, topic, vocabulary/grammar target, essential media, duration, and varied set composition; it must list coverage gaps.
 
 ### Diagnostic And PWA
 
-- **FR-25.** An admin can provision a prospective learner and assign an approved practice set through the standard account/assignment/published-set workflow, without self-registration or a separate diagnostic template.
-- **FR-26.** Authorized staff can inspect diagnostic evidence only for implemented parts and deactivate a diagnostic account through the standard named deactivation flow.
-- **FR-27.** The PWA communicates media readiness and connectivity, caches only the application shell and authorized set assets, and keeps open-attempt recovery separate from answer review, results, and teacher evidence.
+- **FR-25.** An admin can provision a prospective learner and assign a published practice set through the standard account/assignment/publication workflow, without self-registration or a separate diagnostic template.
+- **FR-26.** Authorised staff can inspect diagnostic evidence only for implemented parts and deactivate a diagnostic account through the standard named deactivation flow.
+- **FR-27.** The PWA communicates media readiness and connectivity, caches only the application shell and authorised set assets, and keeps open-attempt recovery separate from answer review, results, and teacher evidence.
 
 ## Non-Functional Requirements
 
 - **NFR-1 Responsive experience.** Learner practice is mobile-first. Teacher/admin/editor work is usable on tablet and efficient on desktop, with responsive card alternatives for key tables. [ASSUMPTION] Pilot support covers the current and immediately previous stable versions of Safari on iOS, Chrome on Android, and Chrome, Safari, Edge, and Firefox on desktop; PWA installation is optional and unavailable installation must not block browser use.
-- **NFR-2 Accessibility.** The product meets WCAG 2.2 AA. Learner controls have 48 by 48 CSS-pixel minimum targets; keyboard order follows instruction order; focus and state are visible and announced; critical meaning never depends on color, hover, drag, fine pointer control, or audio without an approved accommodation.
-- **NFR-3 Privacy and access.** The product collects the minimum profile data needed for centre operation: account identity/contact fields approved by the centre, role, cohort membership, assignments, attempts, and diagnostic status. Authorization occurs for every protected action and resource. Production uses HTTPS, generic login failures, secure server sessions, and no speaking recordings in P0. The centre must approve a P0 child-data governance policy before pilot launch covering parent/guardian or centre authorization, data controller/owner, retention schedule, access/correction/deletion request workflow, and disposition of prospective-learner diagnostic records.
+- **NFR-2 Accessibility.** The product meets WCAG 2.2 AA. Learner controls have 48 by 48 CSS-pixel minimum targets; keyboard order follows instruction order; focus and state are visible and announced; critical meaning never depends on colour, hover, drag, fine pointer control, or audio without an approved accommodation.
+- **NFR-3 Privacy and access.** The product collects the minimum profile data needed for centre operation: account identity/contact fields approved by the centre, role, cohort membership, assignments, attempts, and diagnostic status. Authorisation occurs for every protected action and resource. Production uses HTTPS, generic login failures, secure server sessions, and no speaking recordings in P0. The centre must approve a P0 child-data governance policy before pilot launch covering parent/guardian or centre authorisation, data controller/owner, retention schedule, access/correction/deletion request workflow, and disposition of prospective-learner diagnostic records.
 - **NFR-4 Data correctness.** Published content and active/completed attempts use immutable snapshots. Submission is atomic and idempotent; duplicate or post-submission writes cannot alter results, scoring, or evidence.
 - **NFR-5 Content integrity.** Learner-facing content and media are original, licensed, or approved generated content with provenance. The product does not copy protected assessment text, images, scripts, audio, layouts, or answer keys.
 - **NFR-6 PWA safety.** Essential assets preload before a set begins. Local browser persistence is restricted to open-attempt recovery; answer review, result, and teacher-evidence payloads are not browser-cached.
@@ -192,30 +197,34 @@ Quang, a centre admin, creates a prospective learner account and assigns an appr
 - Preserve accessibility metadata for teacher/admin review but never expose learner-facing transcripts, alt text, or labels that reveal an answer. Require an approved equivalent task when necessary.
 - A full Starters-style mock is a later capability only after all Listening and Reading/Writing parts, item counts, timing, and audio policy are defined and academically approved.
 
-## Dependencies And Open Decisions
+## Decision Register And Release Gates
 
-| Item | Status | Owner / revisit condition |
-| --- | --- | --- |
-| Initial 6-8 Starters topics and grammar targets for the first 50-100 original items | Open | Academic lead before content production begins. |
-| Pilot inventory and coverage target by engine, objective, media need, and repeatable 5-10 minute set composition | Open | Academic lead before pilot content is approved; readiness findings alone cannot waive this gate. |
-| Academic lead and source/version approval process for imported curriculum references | Open | Centre owner before content review/publishing. |
-| Approved public wording for skill/format alignment without Cambridge endorsement | Open | Centre owner with legal/academic review before public-facing use. |
-| P0 child/prospective-learner data governance policy | Open | Centre owner before pilot launch; covers authorization, retention, access/correction/deletion requests, and diagnostic-account disposition. |
-| Validate or replace the assumed needs-practice threshold, audio replay policies, and supported-browser matrix | [ASSUMPTION] | Product owner before pilot acceptance testing. |
-| Parent consent, retention, access, and deletion policy for speaking recordings | Deferred | Required before any speaking recording feature; speaking is out of P0. |
-| Production provider, region, and concrete deployment services | Deferred | Decide before production launch based on budget, ownership, and data-residency requirements. |
-| Centre brand assets | [ASSUMPTION] | P0 uses the existing calm child-friendly visual direction until supplied. |
+This is the sole normative inventory of undecided product matters. Affected artefacts reference the gate ID rather than copying this list. Only the named owner may change status to `closed` and record the approved decision.
+
+| ID | Decision | Owner | Status | Gate / affected artefacts |
+| --- | --- | --- | --- | --- |
+| `GATE-ACADEMIC-SOURCES` | Name the academic lead; verify imported-source editions, provenance, citations and discrepancies, including the 2025 wordlist. | Centre owner, then academic lead | Open — blocking | Before content production, review or publication. Manifest, blueprint, SPEC, Epics 2.1–2.5. |
+| `GATE-CONTENT-PLAN` | Approve the initial 6–8 topics/grammar targets, inventory/coverage target for 50–100 items across all five P0 engines, and whether pilot self-approval is permitted with a documented exception. | Academic lead | Open — blocking | Before pilot content approval. Blueprint, SPEC, Epic 2.3–2.5. |
+| `GATE-PUBLIC-WORDING` | Approve wording for YLE skill/format alignment without implying Cambridge endorsement. | Centre owner with legal/academic review | Open — blocking | Before public-facing use. README, blueprint, UX, content workflow. |
+| `GATE-DATA-GOVERNANCE` | Approve child/prospective-learner authorisation, data controller/owner, retention schedule, access/correction/deletion request workflow, and diagnostic-record disposition. | Centre owner | Open — blocking | Before pilot launch. PRD NFR-3, architecture, account/diagnostic UX and Epics 1/5. P0 still deactivates with retention; it does not purge. |
+| `GATE-PRODUCT-ASSUMPTIONS` | Approve the versioned evidence-state policy (`secure`, `building`, `needs practice`, `not assessed yet`) including audience, aggregation dimension, window/timezone, sample floor, boundary/denominator, repeated-attempt weighting and unresolved-review treatment; also approve audio replay policies and supported-browser matrix. | Product owner | Open — blocking | Before pilot acceptance testing. PRD metrics/FRs, SPEC, UX, architecture and Epics 3/4. |
+| `GATE-ASSIGNMENT-POLICY` | Decide direct/cohort assignment materialisation, late join/removal, duplicate assignment, `available_from`/`due_at`, centre timezone, and assignment status/withdrawal semantics. | Product owner | Open — blocking | Before assignment implementation or weekly-completion measurement. PRD FR-18/metrics, architecture AD-13 and Epics 1.3/2.6/4.4. |
+| `GATE-HISTORICAL-ACCESS` | Decide whether a teacher retains access to evidence captured for a formerly assigned cohort after transfer/unenrolment. | Product owner with data-governance owner | Open — blocking | Before implementing teacher-evidence authorisation. PRD FR-3/15, architecture AD-6/AD-10 and Epic 4.2. Default-deny until closed. |
+| `GATE-DEPLOYMENT` | Select provider, region/data residency, budget owner, backup/restore objectives (RPO/RTO), and concrete production services. | Centre owner and technical owner | Open — blocking for production | Architecture deployment topology and deployment guide. Provider-neutral development may proceed only after other implementation gates close. |
+| `DEC-BRAND` | Supply centre brand assets or approve the current calm visual direction. | Centre owner | Assumption — non-blocking for prototype | DESIGN only. |
+| `DEC-SPEAKING-DATA` | Consent, retention, access and deletion policy for speaking recordings. | Centre owner | Deferred / out of P0 | Required before any speaking-recording feature. |
 
 ## Release Criteria
 
 P0 is ready for pilot when:
 
 - The five specified task engines work on supported phone and desktop browsers with media readiness, explicit submit, post-submit-only answer review, and verified draft recovery states.
-- All role, cohort, account-deactivation, content-publication, assignment, and diagnostic flows meet their functional and authorization requirements.
+- All role, cohort, account-deactivation, content-publication, assignment, and diagnostic flows meet their functional and authorisation requirements.
 - Teacher dashboard filters and drill-down produce actionable, scoped evidence from submitted immutable snapshots.
 - The content readiness view demonstrates or explicitly flags coverage gaps for the pilot's approved content plan.
 - Accessibility, privacy, content-provenance, non-official-result guardrails, and the defined supported-browser matrix are verified.
 - The named open decisions required before content production or public communication are resolved by their owners.
+- `GATE-HISTORICAL-ACCESS` is closed before teacher-evidence authorisation is implemented, and `GATE-DEPLOYMENT` is closed before production launch.
 
 ## Future Direction
 
