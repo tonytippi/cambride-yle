@@ -17,7 +17,7 @@ derived_artifacts:
 
 # CambridgeYLE P0
 
-> **Product authority.** This PRD owns product scope, requirements, decision status and release gates. The SPEC indexes implementation contracts; the curriculum, architecture, experience and design companions own their respective domain detail. Epics only decompose and trace. The historical brief and addendum are superseded. This suite is not implementation-ready or pilot-ready while a blocking gate below remains open.
+> **Product authority.** This PRD owns product scope, requirements, decision status and release gates. The SPEC indexes implementation contracts; the curriculum, architecture, experience and design companions own their respective domain detail. Epics only decompose and trace. The historical brief and addendum are superseded. Core local/staging implementation may proceed under the closed core P0 policy gates; this suite is not AI-enabled, public-claim-ready, pilot-ready or production-ready while its relevant gate below remains open.
 
 ## Product Decision
 
@@ -139,7 +139,7 @@ Quang, a centre admin, creates a prospective learner account and helps the learn
 
 ### Account Management And Access
 
-- **FR-1.** An admin can create learner, teacher, `academic_lead` and admin accounts, assign their roles, and provision their sign-in access.
+- **FR-1.** An admin can create learner, teacher, `academic_lead` and admin accounts, assign their roles, and provision their sign-in access. Before any account exists, a local/staging operator-only bootstrap creates the first active admin from startup-validated server configuration; it is unavailable after the first account is created and is never a public setup route.
 - **FR-2.** A signed-in learner can access only their own practice choices, open attempts and submitted results. Every signed-in `teacher`, `academic_lead` and `admin` can access detailed evidence history for every learner account; the system audit logs every evidence read and mutation.
 - **FR-3.** An admin can view and manage account roles and activation status. `teacher` is read-only for published content/evidence; `academic_lead` can create, edit, rerun, approve and publish content; `admin` has all permissions. A role mutation must not leave the centre without an active admin. P0 has no cohort, class or teacher-assignment model.
 - **FR-4.** An admin can explicitly deactivate an account after a named confirmation. The server rejects deactivation of the final active admin with stable `LAST_ACTIVE_ADMIN` conflict without changing account state or revoking sessions; another admin must first be nominated and active. Otherwise, deactivation revokes active sessions, blocks future sign-in, preserves practice/first-practice records, and records an audit event without learner-response content.

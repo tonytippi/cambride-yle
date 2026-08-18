@@ -21,7 +21,7 @@ This document decomposes and traces the CambridgeYLE P0 contract into implementa
 
 | PRD requirement | SPEC | Domain contract | Story coverage | Release gate |
 | --- | --- | --- | --- | --- |
-| FR-1–4 accounts, role access and deactivation-with-retention | CAP-1 | AD-6, AD-8; EXPERIENCE account states | 1.1–1.3, 5.2 | Core P0 policy closed |
+| FR-1–4 accounts, role access and deactivation-with-retention | CAP-1 | AD-6, AD-8; EXPERIENCE account states | 1.1–1.4, 5.2 | Core P0 policy closed |
 | FR-5–11 learner-selected practice, recommendation, recovery, submit/review | CAP-2–4, CAP-10 | AD-2, AD-4, AD-7, AD-13; EXPERIENCE learner/PWA states | 3.1–3.6 | Core P0 policy closed |
 | FR-12–14 deterministic scoring and immutable evidence | CAP-5 | AD-2–5, AD-10 | 3.5, 4.3 | Core P0 policy closed |
 | FR-15–18 teacher evidence, simple evidence states and recommendation | CAP-6, CAP-8 | AD-6, AD-10, AD-13; EXPERIENCE teacher states | 3.1, 4.1–4.3 | Core P0 policy closed |
@@ -48,7 +48,23 @@ So that centre-managed features can be built and operated consistently.
 
 **And** PostgreSQL access uses reviewed Drizzle migrations, structured logs omit secrets and learner responses, and the responsive base layout implements the DESIGN.md tokens with verified focus contrast.
 
-### Story 1.2: Admin-Created Accounts And Secure Sign-In
+**And** before any account exists, a local/staging operator-only bootstrap uses startup-validated server configuration to create the first active admin; it is unavailable once an account exists and never exposes a public setup route.
+
+### Story 1.2: Manage Centre Accounts And Roles
+
+As an admin,
+I want to create and manage centre accounts and roles,
+So that authorised people have the correct access without leaving the centre without an active admin.
+
+**Acceptance Criteria:**
+
+**Given** an authenticated admin
+**When** they create a learner, teacher, `academic_lead` or admin account, or change an account role
+**Then** the server records the account's active status and role, the admin UI shows the current role/status, and the account receives only the permissions defined for that role.
+
+**And** role mutation or deactivation that would leave no active admin returns `LAST_ACTIVE_ADMIN` without changing account state or revoking sessions; an admin must first create or nominate another active admin.
+
+### Story 1.3: Admin-Created Accounts And Secure Sign-In
 
 As an admin-created user,
 I want to sign in securely to my role-specific home,
@@ -62,7 +78,7 @@ So that I can use the centre functions available to my role.
 
 **And** passwords are Argon2id hashes, invalid, unknown and deactivated account attempts return the same generic failure, login attempts are throttled, and browser navigation alone cannot grant a protected role.
 
-### Story 1.3: Deactivate A Centre Account
+### Story 1.4: Deactivate A Centre Account
 
 As an admin,
 I want to deactivate an account explicitly,
@@ -256,7 +272,7 @@ So that I can guide a learner's next activity.
 
 ### Story 4.2: Filter And Drill Down Into Learner Evidence
 
-As an `academic_lead` or admin,
+As a teacher,
 I want to filter and inspect evidence at item level,
 So that I can understand what a learner actually did before guiding them.
 

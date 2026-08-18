@@ -10,7 +10,7 @@ sources:
   - ../../planning-artifacts/prds/prd-CambridgeYLE-2026-08-17/prd.md
 ---
 
-> **Implementation kernel/index.** The PRD owns product decisions and gates. This SPEC preserves and indexes the build contract; each companion owns its domain detail. It is not implementation-ready while a referenced blocking gate is open.
+> **Implementation kernel/index.** The PRD owns product decisions and gates. This SPEC preserves and indexes the build contract; each companion owns its domain detail. Core local/staging implementation may proceed under the closed core P0 policy gates; referenced gates separately block AI draft actions, public claims, pilot use or production launch.
 
 # CambridgeYLE P0
 
@@ -23,8 +23,8 @@ Existing Starters learners need short online practice whose detailed response ev
 P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze` for self-directed practice.
 
 - **CAP-1**
-  - **intent:** Admin can create learner, teacher, `academic_lead` and admin accounts and deactivate an account when required.
-  - **success:** An admin can create accounts and confirm a named deactivation that revokes active sessions and prevents future login while retaining practice/first-practice records and permitted audit metadata; the server rejects an account or role mutation that would leave no active admin with `LAST_ACTIVE_ADMIN` without mutation.
+  - **intent:** An operator can bootstrap the first admin locally/staging, then admin can create learner, teacher, `academic_lead` and admin accounts and deactivate an account when required.
+  - **success:** An operator-only bootstrap creates the first active admin only when no account exists and exposes no public setup route. An admin can then create accounts and confirm a named deactivation that revokes active sessions and prevents future login while retaining practice/first-practice records and permitted audit metadata; the server rejects an account or role mutation that would leave no active admin with `LAST_ACTIVE_ADMIN` without mutation.
 - **CAP-2**
   - **intent:** A learner can choose published practice by topic or task type, see history-based recommendations, verify essential media readiness, and start or recover an in-progress practice set on phone or desktop.
   - **success:** A learner can resume a locally recovered open draft, while a set with unavailable essential media remains unavailable and clearly offers retry/leave actions; start atomically revalidates the snapshot, authorisation and essential media.
