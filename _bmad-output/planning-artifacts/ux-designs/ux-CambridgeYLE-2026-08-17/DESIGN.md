@@ -93,7 +93,7 @@ CambridgeYLE is a quiet practice room, not a game arcade and not a high-stakes e
 
 This is an initial visual direction, marked as an assumption until centre brand assets are supplied. It must not resemble Cambridge assessment material or use Cambridge marks, shields, certificates, or result language.
 
-## Colors
+## Colours
 
 - **Soft green surfaces** `{colors.surface-base}` and `{colors.surface-soft}` make a long practice flow calm without competing with learning media.
 - **Deep green primary** `{colors.primary}` denotes the main forward action, including starting and submitting a set. It is not a correctness indicator.
@@ -123,7 +123,7 @@ Use `{rounded.lg}` for answer options, media cards, and learning surfaces. Use `
 
 - **Practice header:** task name, question position, optional exit action, and a text progress indicator such as `Question 3 of 5`. No score appears before submission.
 - **Answer option:** a large, entire-row touch target. Selected state adds a strong outline and a textual selected state for assistive technology; colour alone never carries selection.
-- **Audio control:** clear play/replay button, transcript unavailable to learners when it reveals the answer, and an explicit remaining-replays count only if a template limits replay.
+- **Audio control:** clear play/replay button and transcript unavailable to learners when it reveals the answer. P0 replay is unlimited, so no remaining-replays count appears.
 - **Result evidence card:** always uses product-owned labels: `secure`, `building`, `needs practice`, or `not assessed yet`. It never displays pass/fail, a certificate, shield, or an official score.
 - **Deactivation dialog:** account deactivation uses `{colors.danger}`, explains access revocation and P0 record retention, and requires an explicit named confirmation. It never implies deletion or purge and never appears in learner flows.
 

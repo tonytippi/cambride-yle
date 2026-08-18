@@ -66,9 +66,9 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Audio player | Listening | Has accessible play/replay action with unlimited replay. Playback events are stored. Seeking is not offered unless a template permits it. |
 | Submit confirmation | Player | States answered/unanswered count. `Submit practice` is available only after an explicit confirmation; unanswered items remain permitted and are recorded as unanswered. |
 | Answer-review row | Post-submission only | Shows prompt/media reference, learner response, approved answer, correct/incorrect/needs-teacher-review result, and approved explanation. |
-| Evidence filter | Teacher surfaces | Filters learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set. Filters update summaries and drill-down together; every teacher evidence read is audit logged. |
+| Evidence filter | Teacher surfaces | Filters learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, and practice set. The fixed 30-day evidence rule applies without a time-range filter; drill-down may show matching retained submissions outside that window without recalculating the state. Filters update summaries and drill-down together; every teacher evidence read is audit logged. |
 | Status workflow control | Academic lead/admin | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Academic lead/admin can request/edit/rerun text drafts and request/rerun image drafts through their separate configured gateways. AI-created drafts display gateway kind, model, prompt/reference provenance and output hash; image drafts must pass phone-width preview and cannot bypass human review. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers active attempts. |
-| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains GrapeSeed English P0 practice/first-practice records indefinitely only after explicit named confirmation; action is audit logged. |
+| Deactivate-account dialog | Admin | Requires account identifier and consequence text. For the final active admin, show that another admin must first be active and leave the account unchanged. Otherwise, deactivates the account, revokes active sessions, prevents future login and retains GrapeSeed English P0 practice/first-practice records indefinitely only after explicit named confirmation; action is audit logged. |
 
 ## Task Engine Behavior
 
@@ -91,6 +91,7 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Account switch or sign-out | All learner surfaces | Clear the previous account's authorised media and draft namespace before showing another account. A draft/cache key mismatch is blocked and never attached to the new learner. |
 | Preload in progress | Preparation | Show each essential asset as preparing; do not begin with absent media. |
 | Preload failure | Preparation | Identify failed asset type, offer retry, and provide `Leave` without losing home state. |
+| Start revalidation failure | Preparation | If snapshot, authorisation, or essential media changes after preload, keep the set unavailable, create no usable attempt, and offer retry or another published ready set. |
 | Offline during practice | Player | Retain responses locally and show a persistent plain-language offline state. Submission waits until a server connection is available unless a later product decision adds queued submission. |
 | Offline at submit | Submit confirmation | Keep the attempt open and the verified draft visible. Explain that reconnection is required; do not queue submission or show a partial result. |
 | Media authorisation expires mid-attempt | Player | Preserve the open draft, pause only the affected media interaction, request a fresh authorised URL after reconnect/authentication, and offer retry or `Save and leave`; never count a failed refresh as a replay. |
@@ -100,6 +101,7 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Empty teacher evidence | Dashboard | `No completed practice yet for this selection.` Offer filters reset; do not infer a learning level. Every signed-in teacher may open a learner detail; the read is audit logged. |
 | `not assessed yet` | Teacher/learner result | State that there is insufficient completed evidence, not a deficiency. |
 | Item needs teacher review | Result and dashboard | Mark as `Needs teacher review`; exclude it from automatic correct-rate calculations until resolved. |
+| Resolution conflict | Staff evidence | Preserve the prior resolution and show a refresh/retry action when another staff member has created a newer resolution version. |
 | Permission denied | All protected routes | Redirect to the role's home with `You do not have access to that page.` |
 | Retired content in old result | Review | Preserve completed attempt and original item version for teacher review; never re-score it against a replacement. |
 | Deactivated account | Sign in/admin account detail | Reject sign-in with a generic failure. Admin sees that the account is deactivated and can review its audit history; P0 does not purge practice or first-practice records automatically. |
@@ -120,9 +122,9 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 - Learner controls have minimum 48 by 48 CSS pixel targets and generous spacing. Picture options use labels such as `Picture A` rather than position-only instructions.
 - Keyboard order follows the instructional reading order. Focus is visible, never trapped outside an open dialog, and returns to its trigger when closed.
 - Screen readers announce question number, task instruction, selected answer, audio state, required input constraints, save status, and result status.
-- Provide alternative text for teacher/admin review. Do not expose learner-facing alt text, transcripts, or labels that reveal an answer; offer an equivalent approved accessible alternative task where media is essential.
+- Provide alternative text for teacher/admin review. Do not expose learner-facing alt text, transcripts, or labels that reveal an answer. P0 has no alternate accessible task variant; when essential media cannot be used, the media-dependent set remains unavailable.
 - Short answer fields state expected input, for example `Write one number` or `Write one word`; errors after submission explain the accepted answer without ridicule.
-- Respect reduced motion and user zoom. No critical task depends on colour perception, fine pointer precision, or audio alone without an approved equivalent accommodation.
+- Respect reduced motion and user zoom. No critical task depends on colour perception or fine pointer precision. A media-dependent task remains unavailable when its essential audio or image media cannot be used.
 
 ## Responsive & Platform
 
@@ -159,7 +161,7 @@ Failure: an audio asset fails before start -> preparation names the problem and 
 ### Flow 2 - Prepare an offline intervention (Mai, Starters teacher, 20 minutes before class)
 
 1. Mai signs in on her laptop and opens the teacher evidence dashboard.
-2. She filters to completed practice from the last seven days and sees `Listening Part 2` as `needs practice` for several learners.
+2. The dashboard applies its fixed 30-day evidence rule and shows `Listening Part 2` as `needs practice` for several learners.
 3. She filters the target to `numbers` and opens Linh's evidence detail.
 4. The detail shows submitted name/number responses, attempt times, audio replay events, and any item marked `needs teacher review`.
 5. **Climax:** Mai identifies a concrete offline activity: number dictation with extra support for two learners, instead of rechecking every home worksheet manually.

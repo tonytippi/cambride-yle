@@ -76,9 +76,11 @@ So that a departed or unneeded user cannot sign in again without losing pilot re
 
 **And** practice and first-practice records remain retained, the admin UI shows deactivated status/history, and automatic expiry, account deletion and irreversible purge are not implemented.
 
+**And** given deactivation or role mutation would leave no active admin, when it is requested, then the server returns `LAST_ACTIVE_ADMIN` without changing account state or revoking sessions.
+
 ## Epic 2: Safe Starters Practice Content
 
-`Academic_lead` and admin can create or request structured AI text/image drafts, validate, review, phone-preview, publish, retire and compose original approved Starters practice sets with immutable, auditable content/media snapshots. AI output is always a draft and cannot bypass human review or publication.
+`academic_lead` and admin can create or request structured AI text/image drafts, validate, review, phone-preview, publish, retire and compose original approved Starters practice sets with immutable, auditable content/media snapshots. AI output is always a draft and cannot bypass human review or publication.
 
 **FRs covered:** FR-19–24
 
@@ -122,7 +124,7 @@ So that unsuitable, inaccessible, ambiguous or unlicensed material cannot reach 
 **When** validation or review is run
 **Then** the editor sees named publication-blocking findings for missing tags/keys/alternatives/media, curriculum limits, media approval, provenance and accessibility requirements.
 
-**And** only an `academic_lead` or admin may transition a valid item through `draft -> in_review -> approved`, each review/approval mutation is audit logged, and learner-facing accessibility content cannot reveal answers.
+**And** only an `academic_lead` or admin may transition a valid item through `draft -> in_review -> approved`, each review/approval mutation is audit logged, staff text is sanitised, uploads pass type/size/integrity/malicious-content checks, and learner-facing accessibility content cannot reveal answers.
 
 ### Story 2.4: Publish Immutable Practice Sets
 
@@ -184,7 +186,7 @@ So that listening or picture tasks do not begin incomplete.
 **When** the learner enters preparation
 **Then** the app verifies essential authorised assets, displays preparation status by asset type, and blocks attempt creation until all essentials are available.
 
-**And** readiness creates an open attempt bound to the immutable set snapshot, the service worker caches only application shell and authorised set assets, browser caches never contain answer-review/result/teacher-evidence payloads, and failed or expired media offers retry/leave without claiming readiness.
+**And** the server atomically revalidates the immutable published snapshot, learner authorisation and essential-media availability before creating the open attempt; a failure creates no usable attempt. The service worker caches only static application-shell and authorised set assets, browser caches never contain API, HTML/document, signed-URL, answer-review, result, or teacher-evidence payloads, and failed or expired media offers retry/leave without claiming readiness.
 
 ### Story 3.3: Complete The Five P0 Task Engines
 
@@ -261,10 +263,10 @@ So that I can understand what a learner actually did before guiding them.
 **Acceptance Criteria:**
 
 **Given** authorised submitted evidence
-**When** a teacher filters by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range or practice set
+**When** a teacher filters by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic or practice set
 **Then** summary and learner detail use the same filter semantics and direct drill-down reaches snapshot-based submitted responses, outcomes, timing and playback events.
 
-**And** every evidence read is audit logged, learner details never expose another learner's information to a learner account, and no matching completed data shows `not assessed yet` rather than inferring a weakness.
+**And** the fixed 30-day evidence rule applies without a time-range filter, while drill-down may show matching retained submissions outside that window without recalculating state; every evidence read is audit logged, learner details never expose another learner's information to a learner account, and no matching completed data shows `not assessed yet` rather than inferring a weakness.
 
 ### Story 4.3: Resolve Uncertain Item Outcomes
 
@@ -276,9 +278,9 @@ So that the learner's evidence can reflect a justified teaching decision.
 
 **Given** an item outcome marked `needs_teacher_review`
 **When** the `academic_lead` or admin records a resolution
-**Then** the system preserves the automatic outcome, actor, time and reason while creating the immutable effective outcome in one transaction.
+**Then** the system preserves the automatic outcome, actor, time and reason while creating an immutable versioned effective outcome in one transaction.
 
-**And** affected item evidence and aggregates update from effective outcome, while unresolved outcomes remain excluded from automatic correct-rate aggregates.
+**And** a stale correction leaves the prior resolution intact with a stable conflict; affected item evidence, recommendation and aggregates identify and update from the effective-resolution version, while unresolved outcomes remain excluded from automatic correct-rate aggregates.
 
 ## Epic 5: Supervised First Practice
 

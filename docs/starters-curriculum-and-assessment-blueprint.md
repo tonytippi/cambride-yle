@@ -31,7 +31,7 @@ P0 delivers self-directed practice through exactly five engines: `picture_true_f
 
 ### 2.2 Content rules
 
-- All learner-facing questions, examples, scripts, illustrations, recordings, and feedback are original, licensed, or generated for this product and approved by a teacher.
+- All learner-facing questions, examples, scripts, illustrations, recordings, and feedback are original, licensed, or generated for this product and approved by an `academic_lead` or `admin`.
 - The app may say that practice is aligned to relevant YLE skills and formats only after legal/academic wording is approved.
 - The app must not present results as a Cambridge result, certificate, shield, pass, or fail.
 - Imported vocabulary data is an internal curriculum reference. The product must not expose or export the source word list as a downloadable branded feature without permission.
@@ -99,7 +99,7 @@ Until then, call content a `practice set`, `part practice`, or `diagnostic`, nev
 | Practice | Per-item or per-section replay allowed | After submission only | Optional, never punitive |
 | Mock-style | Playback policy set by test template; no arbitrary seek/skip | After submission | Paper-level timer |
 
-Audio, images, and scene metadata required for a set must preload before the learner starts. The UI must display a clear download/error state rather than start with missing media.
+Audio, images, and scene metadata required for a set must preload before the learner starts. The UI must display a clear download/error state rather than start with missing media. The server atomically revalidates the published snapshot, learner authorisation and essential-media availability before attempt creation; if any check fails, no usable attempt is created.
 
 ## 5. Cumulative Curriculum Framework
 
@@ -163,6 +163,7 @@ Before a question can be reviewed, automated validation must report:
 - Names and number forms outside the approved Starters list/range.
 - Sentence length and option count outside task-template limits.
 - Missing target tags, answer keys, alternatives, or required media.
+- Missing immutable provenance, staff-content sanitisation, or media upload-safety records.
 
 Validation flags items for review; an `academic_lead` or `admin` decides whether a flagged exception is acceptable.
 
@@ -181,6 +182,8 @@ Question
 - answer_policy_id
 - authored_by, reviewed_by, version
 - generation_metadata (optional)
+- immutable_provenance: origin, creator/source reference, rights/license reference where applicable, generation metadata where applicable
+- sanitisation_record, upload_safety_record (where staff text or uploaded media applies)
 ```
 
 ### 6.2 Answer policy
@@ -192,6 +195,8 @@ AnswerPolicy
 - input_kind: choice | boolean | yes_no | number | name | word | assignment | colour_region
 - canonical_answer
 - accepted_answers[]
+- normalisation: Unicode, case/locale, whitespace, punctuation and number-form semantics
+- conformance_vectors[]
 - case_sensitive: false by default
 - trim_whitespace: true
 - normalize_punctuation: true

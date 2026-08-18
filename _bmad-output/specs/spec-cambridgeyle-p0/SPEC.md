@@ -24,10 +24,10 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
 
 - **CAP-1**
   - **intent:** Admin can create learner, teacher, `academic_lead` and admin accounts and deactivate an account when required.
-  - **success:** An admin can create accounts and confirm a named deactivation that revokes active sessions and prevents future login while retaining practice/first-practice records and permitted audit metadata.
+  - **success:** An admin can create accounts and confirm a named deactivation that revokes active sessions and prevents future login while retaining practice/first-practice records and permitted audit metadata; the server rejects an account or role mutation that would leave no active admin with `LAST_ACTIVE_ADMIN` without mutation.
 - **CAP-2**
   - **intent:** A learner can choose published practice by topic or task type, see history-based recommendations, verify essential media readiness, and start or recover an in-progress practice set on phone or desktop.
-  - **success:** A learner can resume a locally recovered open draft, while a set with unavailable essential media cannot start and clearly offers retry/leave actions.
+  - **success:** A learner can resume a locally recovered open draft, while a set with unavailable essential media remains unavailable and clearly offers retry/leave actions; start atomically revalidates the snapshot, authorisation and essential media.
 - **CAP-3**
   - **intent:** A learner can complete the five P0 Starters engines: picture true/false, picture yes/no, audio picture choice, audio name/number note-taking, and word-bank cloze.
   - **success:** Each engine records the allowed response and required media-playback evidence without exposing correctness while the attempt remains open.
@@ -39,7 +39,7 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
   - **success:** A submit request finalises once, returns the same saved result when retried with its idempotency key, and stores responses, outcomes, attempt timing, retry/media playback data, answer-policy version, and curriculum tags from the published snapshot.
 - **CAP-6**
   - **intent:** A teacher can inspect every learner's detailed evidence and identify gaps; `academic_lead` and admin can also resolve uncertain outcomes.
-  - **success:** A teacher can filter authorised evidence by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set; every evidence read is audit logged and unresolved outcomes do not affect automatic correctness aggregates.
+  - **success:** A teacher can filter authorised evidence by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, and practice set; the fixed 30-day rule has no time-range filter, retained matching history remains available in drill-down without recalculating state, every evidence read is audit logged, and unresolved outcomes do not affect automatic correctness aggregates.
 - **CAP-7**
   - **intent:** An `academic_lead` or admin can create, request/edit/rerun text drafts and request/rerun image drafts through separate OpenAI-compatible gateways, then review original/licensed/generated content with curriculum, accessibility, media, answer-policy, and provenance validation.
   - **success:** Publish is blocked until an approved question/media version has all required validation/provenance fields, academic approval, and mobile preview; retiring later content does not alter prior attempt results.
@@ -56,11 +56,11 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
 ## Constraints
 
 - All learner-facing questions, media, scripts, and feedback must be original, licensed, or approved generated content; tags and validation follow the Starters assessment blueprint.
-- A learner receives no correct/incorrect indication, answers, or explanations until submitting the complete practice set. Server-side deterministic scoring uses immutable published snapshots.
+- A learner receives no correct/incorrect indication, answers, or explanations until submitting the complete practice set. Server-side deterministic scoring uses immutable published snapshots; submitted attempts, snapshots, scores, and audit records are never corrected.
 - Product language uses `secure`, `building`, `needs practice`, and `not assessed yet`; it must not show pass/fail, official scores, certificates, or Cambridge shields.
-- P0 uses a responsive web/PWA modular monolith with server-side role/resource authorisation, PostgreSQL as system of record, private object storage for media, and browser storage only for open-attempt recovery.
+- P0 uses a responsive web/PWA modular monolith with server-side role/resource authorisation, PostgreSQL as system of record, private object storage for media, and browser storage only for open-attempt recovery. API, HTML/document, signed-URL, result, answer-review, and evidence responses are never cached.
 - Question, media and practice-set lifecycles are independently versioned; rejection creates a new draft version, retirement blocks future selection, and immutable published snapshots grandfather active/completed attempts.
-- `teacher` reads published content and centre-wide evidence; `academic_lead` creates, edits/reruns text drafts, requests/reruns image drafts, approves and publishes content; `admin` has all permissions. The two AI gateways accept text/image input: the text gateway returns text and the image gateway returns an image. WCAG 2.2 AA and British English apply to technical artefacts and product copy. `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS`, `GATE-AI-DRAFT-PROVIDER` and `GATE-DEPLOYMENT` remain owned by the PRD.
+- `teacher` reads published content and centre-wide evidence; `academic_lead` creates, edits/reruns text drafts, requests/reruns image drafts, approves and publishes content; `admin` has all permissions. Staff content is sanitised, uploads are safety-checked, and immutable provenance is publish-blocking. The two AI gateways accept text/image input: the text gateway returns text and the image gateway returns an image. WCAG 2.2 AA and British English apply to technical artefacts and product copy; P0 provides no alternate accessible task variant, so unavailable essential media makes a set unavailable. `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS`, `GATE-AI-DRAFT-PROVIDER` and `GATE-DEPLOYMENT` remain owned by the PRD.
 
 ## Non-goals
 
