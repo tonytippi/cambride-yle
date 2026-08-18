@@ -21,12 +21,12 @@ This document decomposes and traces the CambridgeYLE P0 contract into implementa
 
 | PRD requirement | SPEC | Domain contract | Story coverage | Release gate |
 | --- | --- | --- | --- | --- |
-| FR-1–4 accounts, role access and deactivation-with-retention | CAP-1 | AD-6, AD-8; EXPERIENCE account states | 1.1–1.3, 5.2 | `GATE-DATA-GOVERNANCE` |
-| FR-5–11 learner-selected practice, recommendation, recovery, submit/review | CAP-2–4, CAP-10 | AD-2, AD-4, AD-7, AD-13; EXPERIENCE learner/PWA states | 3.1–3.6 | `GATE-PRODUCT-ASSUMPTIONS` |
-| FR-12–14 deterministic scoring and immutable evidence | CAP-5 | AD-2–5, AD-10 | 3.6, 4.3 | `GATE-PRODUCT-ASSUMPTIONS` |
-| FR-15–18 teacher evidence, simple evidence states and recommendation | CAP-6, CAP-8 | AD-6, AD-10, AD-13; EXPERIENCE teacher states | 3.1, 4.1–4.3 | `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS` |
+| FR-1–4 accounts, role access and deactivation-with-retention | CAP-1 | AD-6, AD-8; EXPERIENCE account states | 1.1–1.3, 5.2 | Core P0 policy closed |
+| FR-5–11 learner-selected practice, recommendation, recovery, submit/review | CAP-2–4, CAP-10 | AD-2, AD-4, AD-7, AD-13; EXPERIENCE learner/PWA states | 3.1–3.6 | Core P0 policy closed |
+| FR-12–14 deterministic scoring and immutable evidence | CAP-5 | AD-2–5, AD-10 | 3.5, 4.3 | Core P0 policy closed |
+| FR-15–18 teacher evidence, simple evidence states and recommendation | CAP-6, CAP-8 | AD-6, AD-10, AD-13; EXPERIENCE teacher states | 3.1, 4.1–4.3 | Core P0 policy closed |
 | FR-19–24 content/media/set lifecycle and readiness | CAP-7–8 | Blueprint sections 5–9; AD-3, AD-9, AD-11–12 | 2.1–2.5 | `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-AI-DRAFT-PROVIDER` |
-| FR-25–27 supervised first practice and safe PWA | CAP-9–10 | AD-7, AD-8, AD-10; EXPERIENCE first-practice/PWA states | 3.2, 3.5, 5.1–5.2 | `GATE-DATA-GOVERNANCE` |
+| FR-25–27 supervised first practice and safe PWA | CAP-9–10 | AD-7, AD-8, AD-10; EXPERIENCE first-practice/PWA states | 3.2, 3.4, 5.1–5.2 | Core P0 policy closed |
 
 ## Epic 1: Centre-Managed Accounts And Access
 
@@ -78,7 +78,7 @@ So that a departed or unneeded user cannot sign in again without losing pilot re
 
 ## Epic 2: Safe Starters Practice Content
 
-`Academic_lead` and admin can create or request structured AI drafts, validate, review, phone-preview, publish, retire and compose original approved Starters practice sets with immutable, auditable content/media snapshots. AI output is always a draft and cannot bypass human review or publication.
+`Academic_lead` and admin can create or request structured AI text/image drafts, validate, review, phone-preview, publish, retire and compose original approved Starters practice sets with immutable, auditable content/media snapshots. AI output is always a draft and cannot bypass human review or publication.
 
 **FRs covered:** FR-19–24
 
@@ -99,16 +99,16 @@ So that each item can be validated and scored consistently.
 ### Story 2.2: Create Manual Or AI Content Drafts
 
 As an `academic_lead`,
-I want to create a question/media draft manually or request a structured AI draft,
+I want to create a question/media draft manually, request/edit/rerun a structured text draft, or request/rerun an image draft,
 So that safe practice content can enter academic review efficiently.
 
 **Acceptance Criteria:**
 
 **Given** an authenticated `academic_lead` or admin and a closed `GATE-AI-DRAFT-PROVIDER` for AI requests
-**When** they create a manual draft or request an AI draft
+**When** they create a manual draft, request/edit/rerun a text draft, or request/rerun an image draft
 **Then** the draft records level, task type, paper/part, prompt/options, answer policy, target IDs, topic IDs, estimated duration, accessibility metadata and immutable provenance fields.
 
-**And** an AI draft calls the configured OpenAI-compatible gateway with its server-only API key, records gateway/model/prompt provenance and generated origin, remains `draft`, and cannot be published without `academic_lead`/admin approval and phone-width preview.
+**And** a text draft calls the configured text gateway (`text,image -> text`) and an image draft calls the configured image gateway (`text,image -> image`), each with its own server-only API key. Every draft records gateway kind, model, input-prompt/reference provenance, output hash and generated origin, remains `draft`, and cannot be published without `academic_lead`/admin approval; image drafts also pass phone-width preview.
 
 ### Story 2.3: Validate, Review And Phone-Preview Content
 
@@ -170,7 +170,7 @@ So that I can practise at a suitable time without losing progress.
 **When** they open learner home
 **Then** they can browse published sets by topic and task type, see title, paper/part, estimated time and `Start`, `Resume` or post-submission `Review` actions.
 
-**And** recommendations use only the learner's own 30-day evidence, rank `needs practice` before `building` before other published content, explain the practice area without an official-result claim, record the recommendation version/shown set IDs, and never block manual selection.
+**And** recommendations use only the learner's own 30-day evidence from the latest submitted attempt of each practice set, rank `needs practice` before `building` before other published content, explain the practice area without an official-result claim, record the recommendation version/shown set IDs, and never block manual selection.
 
 ### Story 3.2: Prepare Essential Media And Safe PWA Storage
 
@@ -198,7 +198,7 @@ So that I can practise core reading and listening formats.
 **When** the learner selects, changes or enters an answer and uses allowed audio replay
 **Then** responses and playback events are saved only while the attempt is open, controls are keyboard-operable with minimum 48 by 48 CSS-pixel targets, and no correctness indication is shown.
 
-**And** text fields state their controlled input, word-bank choices remain editable until submission, picture choices have non-positional accessible labels, and replay/seek behaviour follows the snapshot playback policy governed by `GATE-PRODUCT-ASSUMPTIONS`.
+**And** text fields state their controlled input, word-bank choices remain editable until submission, picture choices have non-positional accessible labels, audio replay is unlimited, and seeking is unavailable unless a template permits it.
 
 ### Story 3.4: Recover Open Attempts During Connectivity Loss
 
@@ -246,11 +246,11 @@ So that I can guide a learner's next activity.
 
 **Acceptance Criteria:**
 
-**Given** `GATE-DATA-GOVERNANCE` is closed and submitted attempts exist
+**Given** the approved GrapeSeed English access/retention policy applies and submitted attempts exist
 **When** a teacher opens the evidence dashboard
 **Then** they can open any learner's evidence detail and the system audit logs the read with actor, target opaque ID, time and outcome; `teacher` remains read-only for content/evidence while `academic_lead` and admin may resolve uncertain outcomes.
 
-**And** the dashboard applies the versioned 30-day rule: fewer than three assessable outcomes is `not assessed yet`, under 60% is `needs practice`, 60% to under 80% is `building`, and 80% or more is `secure` for the selected paper/part and language target; unresolved outcomes are excluded.
+**And** the dashboard applies the versioned 30-day rule using only the latest submitted attempt of each practice set: fewer than three assessable outcomes is `not assessed yet`, under 60% is `needs practice`, 60% to under 80% is `building`, and 80% or more is `secure` for the selected paper/part and language target; unresolved outcomes are excluded.
 
 ### Story 4.2: Filter And Drill Down Into Learner Evidence
 

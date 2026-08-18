@@ -39,9 +39,9 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
   - **success:** A submit request finalises once, returns the same saved result when retried with its idempotency key, and stores responses, outcomes, attempt timing, retry/media playback data, answer-policy version, and curriculum tags from the published snapshot.
 - **CAP-6**
   - **intent:** A teacher can inspect every learner's detailed evidence and identify gaps; `academic_lead` and admin can also resolve uncertain outcomes.
-  - **success:** A teacher can filter authorised evidence by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set; every evidence read is audit logged and unresolved outcomes do not affect automatic correctness aggregates. Centre-wide staff access remains blocked by `GATE-DATA-GOVERNANCE`.
+  - **success:** A teacher can filter authorised evidence by learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set; every evidence read is audit logged and unresolved outcomes do not affect automatic correctness aggregates.
 - **CAP-7**
-  - **intent:** An `academic_lead` or admin can create, request/edit/rerun AI drafts for, and review original/licensed/generated content with curriculum, accessibility, media, answer-policy, and provenance validation.
+  - **intent:** An `academic_lead` or admin can create, request/edit/rerun text drafts and request/rerun image drafts through separate OpenAI-compatible gateways, then review original/licensed/generated content with curriculum, accessibility, media, answer-policy, and provenance validation.
   - **success:** Publish is blocked until an approved question/media version has all required validation/provenance fields, academic approval, and mobile preview; retiring later content does not alter prior attempt results.
 - **CAP-8**
   - **intent:** An authorised user can assemble published question/media versions into a practice set for learner selection and history-based recommendation.
@@ -60,7 +60,7 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
 - Product language uses `secure`, `building`, `needs practice`, and `not assessed yet`; it must not show pass/fail, official scores, certificates, or Cambridge shields.
 - P0 uses a responsive web/PWA modular monolith with server-side role/resource authorisation, PostgreSQL as system of record, private object storage for media, and browser storage only for open-attempt recovery.
 - Question, media and practice-set lifecycles are independently versioned; rejection creates a new draft version, retirement blocks future selection, and immutable published snapshots grandfather active/completed attempts.
-- `teacher` reads published content and centre-wide evidence; `academic_lead` creates, edits, reruns, approves and publishes content; `admin` has all permissions. WCAG 2.2 AA and British English apply to technical artefacts and product copy. `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS`, `GATE-AI-DRAFT-PROVIDER` and `GATE-DEPLOYMENT` remain owned by the PRD.
+- `teacher` reads published content and centre-wide evidence; `academic_lead` creates, edits/reruns text drafts, requests/reruns image drafts, approves and publishes content; `admin` has all permissions. The two AI gateways accept text/image input: the text gateway returns text and the image gateway returns an image. WCAG 2.2 AA and British English apply to technical artefacts and product copy. `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN`, `GATE-PUBLIC-WORDING`, `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS`, `GATE-AI-DRAFT-PROVIDER` and `GATE-DEPLOYMENT` remain owned by the PRD.
 
 ## Non-goals
 
@@ -68,7 +68,7 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
 - A complete Starters-style mock, Movers/Flyers content, speaking recordings/scoring, chatbot/tutor, or native apps.
 - Publishing AI-generated content without required validation and human review.
 - A separate P0 diagnostic template, microservices, LMS/xAPI integration, or an analytics warehouse.
-- Automatic retention expiry or irreversible deletion/purge of deactivated accounts and practice data.
+- Processing deletion requests, automatic retention expiry, or irreversible deletion/purge of deactivated accounts and practice data.
 
 ## Success Signal
 
@@ -82,4 +82,4 @@ P0 implements exactly `picture_true_false`, `picture_yes_no`, `audio_picture_cho
 
 ## Gate Trace
 
-The PRD Decision Register is the sole owner of open decisions. `GATE-CONTENT-PLAN` is closed: teacher-facing curriculum/assessment guidance and individual `academic_lead`/admin approval govern publication. Public copy remains blocked by `GATE-ACADEMIC-SOURCES` and `GATE-PUBLIC-WORDING`; pilot launch and centre-wide teacher evidence access by `GATE-DATA-GOVERNANCE`; pilot acceptance by `GATE-PRODUCT-ASSUMPTIONS`; AI drafts by `GATE-AI-DRAFT-PROVIDER`; and production launch by `GATE-DEPLOYMENT`.
+The PRD Decision Register is the sole owner of open decisions. Core P0 planning gates are closed: teacher-facing curriculum/assessment guidance and individual `academic_lead`/admin approval govern publication; the 30-day latest-attempt evidence policy, unlimited replay, supported-browser matrix and GrapeSeed English deactivation-with-retention policy are fixed. Public copy remains blocked by `GATE-ACADEMIC-SOURCES` and `GATE-PUBLIC-WORDING`; AI drafts by `GATE-AI-DRAFT-PROVIDER`; and production launch by `GATE-DEPLOYMENT`.

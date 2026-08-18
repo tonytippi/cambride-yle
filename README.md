@@ -16,16 +16,14 @@ Khi tài liệu mâu thuẫn, dùng thứ tự sau. Mỗi quyết định chỉ 
 
 ## Trạng thái sẵn sàng
 
-Bộ tài liệu **chưa implementation-ready hoặc pilot-ready**. PRD Decision Register là danh sách duy nhất của các quyết định mở. Các blocking gate hiện tại:
+Bộ tài liệu **đã implementation-ready cho core P0**, nhưng chưa AI-enabled, public-claim-ready, pilot-ready hoặc production-ready. PRD Decision Register là danh sách duy nhất của các quyết định mở. Các blocking gate hiện tại:
 
 - `GATE-ACADEMIC-SOURCES` trước mọi public curriculum/alignment claim dựa trên imported references.
 - `GATE-PUBLIC-WORDING` trước mọi public-facing claim.
-- `GATE-DATA-GOVERNANCE` trước pilot launch.
-- `GATE-PRODUCT-ASSUMPTIONS` trước pilot acceptance testing.
 - `GATE-AI-DRAFT-PROVIDER` trước khi bật AI tạo content draft.
 - `GATE-DEPLOYMENT` trước production launch.
 
-Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN` đã đóng: teacher-facing curriculum/assessment guidance là nguồn tạo/review content và mỗi set được `academic_lead`/`admin` phê duyệt riêng. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
+Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN`, `GATE-DATA-GOVERNANCE` và `GATE-PRODUCT-ASSUMPTIONS` đã đóng: teacher-facing curriculum/assessment guidance là nguồn tạo/review content, mỗi set được `academic_lead`/`admin` phê duyệt riêng, P0 không xử lý yêu cầu xóa dữ liệu, và browser matrix đã được chấp thuận. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
 
 ## Imported references
 

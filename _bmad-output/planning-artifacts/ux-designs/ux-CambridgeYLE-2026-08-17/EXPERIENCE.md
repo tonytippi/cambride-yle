@@ -10,7 +10,7 @@ updated: 2026-08-18
 
 # CambridgeYLE Experience Spine
 
-> This document owns behaviour; `DESIGN.md` owns visual rules and the PRD owns decisions/gates. It does not close `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS` or `GATE-AI-DRAFT-PROVIDER`.
+> This document owns behaviour; `DESIGN.md` owns visual rules and the PRD owns decisions/gates. Core P0 policy gates are closed; `GATE-AI-DRAFT-PROVIDER` remains open before AI draft generation.
 
 ## Foundation
 
@@ -33,7 +33,7 @@ The product is a Starters practice application, not an official exam service. It
 | Learner evidence detail | Teacher dashboard | Inspect a learner's completed sets and item-level evidence. |
 | Admin accounts | Admin navigation | Create, edit, and deactivate accounts. |
 | Content library | Academic lead/admin navigation; teacher read-only navigation | Academic lead/admin search and manage all content; teacher reads published questions and practice sets. |
-| Question editor and review | Content library | Academic lead/admin author, request/edit/rerun AI drafts, validate, preview, approve, publish and retire a question. |
+| Question editor and review | Content library | Academic lead/admin author, request/edit/rerun text drafts, request/rerun image drafts, validate, preview, approve, publish and retire a question/media version. |
 | Practice-set composer | Content library | Assemble only published question/media versions into a set version; publish for learner selection. |
 | First-practice setup | Admin navigation | Create a supervised prospective-learner account and help select a published practice set. |
 
@@ -63,12 +63,12 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Practice header | Player | Shows question position and `Save and leave`. It does not expose score, correctness, or answers. |
 | Choice/boolean/yes-no input | Player | Exactly one answer selected; learner can change it until submission. Selection is announced and remains visible. |
 | Short text input | Note-taking/cloze | Preserves entered text locally; normalised deterministic scoring occurs only at submission. |
-| Audio player | Listening | Has accessible play/replay action. Playback events are stored. Template playback rules determine replay limits; seeking is not offered unless a template permits it. |
+| Audio player | Listening | Has accessible play/replay action with unlimited replay. Playback events are stored. Seeking is not offered unless a template permits it. |
 | Submit confirmation | Player | States answered/unanswered count. `Submit practice` is available only after an explicit confirmation; unanswered items remain permitted and are recorded as unanswered. |
 | Answer-review row | Post-submission only | Shows prompt/media reference, learner response, approved answer, correct/incorrect/needs-teacher-review result, and approved explanation. |
 | Evidence filter | Teacher surfaces | Filters learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set. Filters update summaries and drill-down together; every teacher evidence read is audit logged. |
-| Status workflow control | Academic lead/admin | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Academic lead/admin can request, edit and rerun AI drafts through the configured gateway. AI-created drafts display provider/model/prompt provenance and cannot bypass human review. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers active attempts. |
-| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains P0 practice/first-practice records only after explicit named confirmation; action is audit logged. |
+| Status workflow control | Academic lead/admin | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Academic lead/admin can request/edit/rerun text drafts and request/rerun image drafts through their separate configured gateways. AI-created drafts display gateway kind, model, prompt/reference provenance and output hash; image drafts must pass phone-width preview and cannot bypass human review. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers active attempts. |
+| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains GrapeSeed English P0 practice/first-practice records indefinitely only after explicit named confirmation; action is audit logged. |
 
 ## Task Engine Behavior
 
@@ -76,8 +76,8 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | --- | --- | --- | --- |
 | `picture_true_false` | Choose true or false for a picture statement | Choice may change; no correctness response | Submitted choice, approved answer, explanation tied to picture/statement |
 | `picture_yes_no` | Choose yes or no for a picture statement | Choice may change; no correctness response | Submitted choice, approved answer, explanation |
-| `audio_picture_choice` | Replay approved audio and choose A/B/C picture | Audio policy enforced; selection may change | Submitted option, approved option, explanation |
-| `audio_note_taking` | Replay approved audio and enter a name/number | Entry retained; no spelling correction or hint | Normalised result; show accepted answer; `needs teacher review` when policy requires |
+| `audio_picture_choice` | Replay approved audio and choose A/B/C picture | Unlimited replay; selection may change | Submitted option, approved option, explanation |
+| `audio_note_taking` | Replay approved audio and enter a name/number | Unlimited replay; no spelling correction or hint | Normalised result; show accepted answer; `needs teacher review` when policy requires |
 | `word_bank_cloze` | Select/copy a word into each blank | Entries may change; no partial correctness | Completed text, approved mapping, explanation per blank or passage |
 
 ## State Patterns
@@ -97,7 +97,7 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Save/recovery error | Player | Keep the visible answer; show retry state. Never claim it is saved if it is not. |
 | Unanswered questions | Submit confirmation | State count and provide `Review questions` or `Submit anyway`; no forced answer. |
 | Scoring in progress | Result transition | Show a brief non-blocking completion state. Do not expose an incomplete score. |
-| Empty teacher evidence | Dashboard | `No completed practice yet for this selection.` Offer filters reset; do not infer a learning level. Every signed-in teacher may open a learner detail after `GATE-DATA-GOVERNANCE` closes. |
+| Empty teacher evidence | Dashboard | `No completed practice yet for this selection.` Offer filters reset; do not infer a learning level. Every signed-in teacher may open a learner detail; the read is audit logged. |
 | `not assessed yet` | Teacher/learner result | State that there is insufficient completed evidence, not a deficiency. |
 | Item needs teacher review | Result and dashboard | Mark as `Needs teacher review`; exclude it from automatic correct-rate calculations until resolved. |
 | Permission denied | All protected routes | Redirect to the role's home with `You do not have access to that page.` |
@@ -171,7 +171,7 @@ Failure: no completed data matches the filter -> dashboard says there is not eno
 
 1. An opens a draft question in the content library.
 2. The editor shows its required task metadata, answer policy, target vocabulary/grammar, original media, and validation flags.
-3. An fixes missing tags, edits or reruns the AI draft if needed, and approves it as an `academic_lead`.
+3. An fixes missing tags, edits or reruns a text draft, or reruns an image draft if needed, and approves the versions as an `academic_lead`.
 4. An uses the phone-width preview to verify that image regions, audio controls, and answer options are usable.
 5. An may request an AI-generated structured draft, then manually publishes reviewed question/media versions and an immutable set version for learner selection.
 6. **Climax:** The set is available to learners with all required media and deterministic answer policy attached; the teacher receives evidence that can be used offline.

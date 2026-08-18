@@ -25,7 +25,7 @@ companions:
 
 # Architecture Spine - CambridgeYLE P0
 
-> This document owns technical invariants, not product decisions. The PRD Decision Register owns every open gate. Architecture is not implementation-ready while `GATE-DATA-GOVERNANCE` or another implementation-blocking gate remains open.
+> This document owns technical invariants, not product decisions. The PRD Decision Register owns every open gate. Core P0 architecture is implementation-ready; AI draft generation, public curriculum claims and production deployment remain separately gated.
 
 ## Design Paradigm
 
@@ -80,7 +80,7 @@ flowchart LR
 
 - **Binds:** account-management, learner-practice, teacher-evidence, content-publication
 - **Prevents:** role checks that exist only in navigation/UI, ID-based data exposure, or unapproved centre-wide access to child data
-- **Rule:** Every application use-case receives an authenticated actor and authorises both role and resource scope before reading or mutating data. Roles are `learner`, `teacher`, `academic_lead` and `admin`. Learner is limited to own practice choices, attempts and results. Teacher reads published content and detailed evidence for every learner account only after `GATE-DATA-GOVERNANCE` closes. `academic_lead` additionally creates, edits, reruns, approves and publishes content, and resolves uncertain outcomes. Admin has all P0 permissions and manages roles. Every staff evidence read and mutation writes an audit event. P0 has no cohort, class or teacher-assignment scope.
+- **Rule:** Every application use-case receives an authenticated actor and authorises both role and resource scope before reading or mutating data. Roles are `learner`, `teacher`, `academic_lead` and `admin`. Learner is limited to own practice choices, attempts and results. Teacher reads published content and detailed evidence for every learner account. `academic_lead` additionally creates, edits, reruns, approves and publishes content, and resolves uncertain outcomes. Admin has all P0 permissions and manages roles. Every staff evidence read and mutation writes an audit event. P0 has no cohort, class or teacher-assignment scope.
 
 ### AD-7 - Media security and PWA caching boundary
 
@@ -92,7 +92,7 @@ flowchart LR
 
 - **Binds:** account-management, supervised-first-practice, teacher-evidence
 - **Prevents:** deactivated users retaining a session, accidental irreversible data loss, or audit trails that retain learner answers unnecessarily
-- **Rule:** Account deactivation is an admin-only server transaction that sets `deactivated_at`/`deactivated_by`, revokes active sessions, prevents all future authentication/authorisation, and emits an audit event containing actor, action, target opaque ID, and timestamp only. P0 retains practice and first-practice records after deactivation and does not implement automatic purge; store the minimum account profile necessary for centre operation and do not introduce speaking recordings.
+- **Rule:** Account deactivation is an admin-only server transaction that sets `deactivated_at`/`deactivated_by`, revokes active sessions, prevents all future authentication/authorisation, and emits an audit event containing actor, action, target opaque ID, and timestamp only. GrapeSeed English retains practice and first-practice records indefinitely after deactivation; P0 does not process deletion requests, purge or delete learner data. An admin handles access/correction requests. Store the minimum account profile necessary for centre operation and do not introduce speaking recordings.
 
 ### AD-9 - Schema migrations and typed boundary validation
 
@@ -104,7 +104,7 @@ flowchart LR
 
 - **Binds:** teacher-evidence, supervised-first-practice, deterministic-scoring
 - **Prevents:** dashboards with incompatible aggregation dimensions, uncertain outcomes counted as right/wrong, and a P0 first-practice flow beyond published self-directed practice
-- **Rule:** Evidence facts derive only from immutable item snapshots and expose learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, practice set, submitted time, automatic outcome, and effective outcome. Product evidence states are only `secure`, `building`, `needs practice`, and `not assessed yet`. For a paper/part and language target within the previous 30 days, fewer than three assessable outcomes is `not assessed yet`, under 60% correct is `needs practice`, 60% to under 80% is `building`, and 80% or more is `secure`; unresolved `needs_teacher_review` is excluded. Recommendations rank matching published sets for `needs practice`, then `building`, then other selectable sets, and never remove learner choice. P0 first practice is admin-supervised use of published self-directed practice; no separate diagnostic template, public acquisition, or self-registration flow is introduced.
+- **Rule:** Evidence facts derive only from immutable item snapshots and expose learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, practice set, submitted time, automatic outcome, and effective outcome. Product evidence states are only `secure`, `building`, `needs practice`, and `not assessed yet`. For a paper/part and language target within the previous 30 days, only the latest submitted attempt of each practice set contributes; fewer than three assessable outcomes is `not assessed yet`, under 60% correct is `needs practice`, 60% to under 80% is `building`, and 80% or more is `secure`; unresolved `needs_teacher_review` is excluded. Recommendations rank matching published sets for `needs practice`, then `building`, then other selectable sets, and never remove learner choice. P0 first practice is admin-supervised use of published self-directed practice; no separate diagnostic template, public acquisition, or self-registration flow is introduced.
 
 ### AD-11 - Content provenance is publish-blocking
 
@@ -116,7 +116,7 @@ flowchart LR
 
 - **Binds:** content-publication, learner-practice, media-and-pwa
 - **Prevents:** one asset state implicitly publishing another, rejection destroying review history, source revision mutating a publication, or retirement breaking an active attempt
-- **Rule:** Question versions, media versions and practice-set versions each enforce their own `draft -> in_review -> approved -> published -> retired` transitions. `in_review -> rejected` records actor/reason/time and creates a new editable draft version; revision never mutates a published version. Set publication atomically verifies every referenced question/media version is published and snapshots it. Retirement prevents new publication/selection but grandfathers open/submitted attempts against immutable snapshot/media versions. An AI provider may create structured drafts only after `GATE-AI-DRAFT-PROVIDER` closes. The server calls the configured OpenAI-compatible AI Gateway using a server-only API key; every AI draft records gateway/model/prompt provenance and still requires `academic_lead`/admin review and manual publication.
+- **Rule:** Question versions, media versions and practice-set versions each enforce their own `draft -> in_review -> approved -> published -> retired` transitions. `in_review -> rejected` records actor/reason/time and creates a new editable draft version; revision never mutates a published version. Set publication atomically verifies every referenced question/media version is published and snapshots it. Retirement prevents new publication/selection but grandfathers open/submitted attempts against immutable snapshot/media versions. Two OpenAI-compatible gateways may create drafts only after `GATE-AI-DRAFT-PROVIDER` closes: the text gateway accepts text/image input and returns text, while the image gateway accepts text/image input and returns an image. Each call uses its own server-only API key and sends only curriculum/assessment guidance, content metadata, academic-lead/admin prompts, permitted content-reference images and the draft under review; it never sends learner identity/account/attempt/response/evidence data. Every AI draft records gateway kind, endpoint identifier, model, input-prompt/reference provenance and output hash; text and image drafts both require `academic_lead`/admin review and manual publication.
 
 ### AD-13 - Self-directed selection and recommendation boundary
 
@@ -134,7 +134,7 @@ flowchart LR
 | Mutations | All mutation handlers authenticate, authorise, parse Zod input, invoke one application use-case, and write an audit event when content status, AI-draft request, account, teacher-evidence read, or teacher-review state changes. |
 | Transactions | A use-case owns its transaction boundary. Repositories do not start nested transactions. Finalisation, publication, account deactivation, and teacher review are transactional. |
 | Logs and audit | Structured application logs use request ID, actor opaque ID, feature/action, outcome, and error code. Never log passwords, session IDs, learner responses, answer keys, signed URLs, or raw audio. |
-| Configuration | Environment variables are parsed at startup. The OpenAI-compatible gateway endpoint, model identifier and API key are server-only; browser-visible configuration is limited to non-secret public values. |
+| Configuration | Environment variables are parsed at startup. `AI_TEXT_GATEWAY_BASE_URL`, `AI_TEXT_GATEWAY_MODEL` and `AI_TEXT_GATEWAY_API_KEY` configure the OpenAI-compatible text gateway; `AI_IMAGE_GATEWAY_BASE_URL`, `AI_IMAGE_GATEWAY_MODEL` and `AI_IMAGE_GATEWAY_API_KEY` configure the OpenAI-compatible image gateway. All are server-only; browser-visible configuration is limited to non-secret public values. |
 
 ## Stack
 
@@ -229,10 +229,10 @@ flowchart TB
 
 - **Production deployment:** governed only by `GATE-DEPLOYMENT`; no provider, region, data-residency, budget, RPO or RTO assumption is approved here.
 - **Email delivery and password-reset mechanism:** admin-created-account flow is P0; choose provider and recovery UX before enabling self-service password recovery.
-- **Retention and irreversible data purge:** P0 deactivates accounts and retains their practice/first-practice records; `GATE-DATA-GOVERNANCE` must close before pilot launch and a later purge feature needs a separate approved decision.
+- **Retention and irreversible data purge:** GrapeSeed English retains practice/first-practice records indefinitely after deactivation. P0 does not process deletion requests, purge or delete learner data.
 - **Automatic background submission:** P0 retains drafts locally but requires connectivity to finalise, avoiding ambiguous duplicate submission; revisit after real offline pilot evidence.
 - **Separate diagnostic templates:** P1 only, after pilot evidence; P0 reuses published self-directed practice under admin supervision.
 - **Speaking observations and recordings:** excluded from P0 pending parent consent, retention, access, and deletion policy.
-- **AI Gateway configuration:** configure the supplied OpenAI-compatible endpoint and server-side API key before enabling drafts. AI cannot cross publication/scoring boundaries.
+- **AI Gateway configuration:** configure each supplied OpenAI-compatible text/image gateway and its server-side API key before enabling that draft action. AI cannot cross publication/scoring boundaries.
 - **Movers/Flyers, full mock templates, richer scene engines:** add as later capabilities without weakening snapshot, scorer, curriculum, or media invariants.
 - **Analytics warehouse, notifications, public acquisition, payments, native apps, microservices:** out of P0; introduce only when a measured need exceeds the modular monolith.
