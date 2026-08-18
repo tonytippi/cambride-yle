@@ -5,14 +5,12 @@ describe("structured logging redaction", () => {
   it("retains operational fields and redacts nested protected values", () => {
     expect(redact({ requestId: "request-1", actorId: "actor-1", password: "hidden", apiKey: "hidden", nested: { learnerResponse: "hidden", databaseUrl: "hidden" } })).toEqual({ requestId: "request-1", actorId: "actor-1", password: "[REDACTED]", apiKey: "[REDACTED]", nested: { learnerResponse: "[REDACTED]", databaseUrl: "[REDACTED]" } });
   });
-  it("emits safe JSON for circular metadata and BigInt values", () => {
+  it("omits arbitrary metadata from structured events", () => {
     const circular: Record<string, unknown> = { count: 1n, cookie: "hidden" };
     circular.self = circular;
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     logEvent({ requestId: "request-1", feature: "health", action: "check", outcome: "success", metadata: circular });
-    expect(info).toHaveBeenCalledWith(expect.stringContaining('"cookie":"[REDACTED]"'));
-    expect(info).toHaveBeenCalledWith(expect.stringContaining('"count":"1"'));
-    expect(info).toHaveBeenCalledWith(expect.stringContaining('"self":"[CIRCULAR]"'));
+    expect(info).toHaveBeenCalledWith('{"requestId":"request-1","feature":"health","action":"check","outcome":"success"}');
     info.mockRestore();
   });
 });

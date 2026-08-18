@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-import "@/shared/config/server";
 
 export const metadata: Metadata = { title: "CambridgeYLE", description: "A focused English practice workspace." };
 

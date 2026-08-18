@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { parseServerConfig } from "./src/shared/config/environment";
+
+parseServerConfig(process.env);
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],

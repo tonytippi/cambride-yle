@@ -2,7 +2,7 @@
 title: 'Story 1.1: Establish The Application Foundation'
 type: 'feature'
 created: '2026-08-18'
-status: 'done'
+status: 'in-progress'
 baseline_commit: '651018014928737d70b8b1c666d7ad0f632897ec'
 review_loop_iteration: 0
 context:
@@ -106,3 +106,11 @@ The foundation must create stable seams, not pre-implement later domains. Keep t
 
 - Verify responsive gutters and keyboard focus in the real browser.
   [`foundation.spec.ts:3`](../../tests/e2e/foundation.spec.ts#L3)
+
+### Review Findings
+
+- [x] [Review][Patch] Fail server configuration during application startup [next.config.ts:4] — resolved by parsing the server configuration while Next loads its configuration; an invalid `DATABASE_URL` now stops `next start` before the server is usable.
+- [x] [Review][Patch] Prevent sensitive values from escaping generic log metadata [src/shared/logging/logger.ts:36] — resolved by emitting only the defined operational fields and omitting arbitrary metadata from application logs.
+- [x] [Review][Patch] Cancel or isolate timed-out database health work [src/infrastructure/database/health.ts:5] — resolved by using and force-closing a dedicated one-connection client for each probe, so a stalled health query cannot occupy the application pool.
+- [x] [Review][Patch] Exercise the real operational boundaries in automated tests [tests/e2e/foundation.spec.ts:17] — resolved with browser assertions against served security headers and an actual `npm run db:migrate` verification against the configured local PostgreSQL database.
+- [ ] [Review][Patch] Align declared dependencies with the approved architecture stack [package.json:21] — partially resolved: Next-compatible dependencies now use the approved versions. TypeScript 7.0.2 remains blocked because the installed Next ESLint toolchain rejects it (`typescript-eslint does not support TS 7.0`); Tailwind 3.4.17 remains paired with the existing Tailwind 3 configuration. Reconcile `ARCHITECTURE-SPINE.md:141-156` with a supported, tested toolchain before changing these two versions.

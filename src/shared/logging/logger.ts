@@ -35,7 +35,9 @@ export function redact(value: LogValue, key = "", seen = new WeakSet<object>()):
 
 export function logEvent(event: OperationalEvent): void {
   try {
-    const safeEvent = redact(event) as OperationalEvent;
+    // Metadata can contain arbitrary feature payloads, so keep it out of application logs.
+    const { requestId, actorId, feature, action, outcome, errorCode } = event;
+    const safeEvent = { requestId, ...(actorId ? { actorId } : {}), feature, action, outcome, ...(errorCode ? { errorCode } : {}) };
     console.info(JSON.stringify(safeEvent));
   } catch {
     console.info(JSON.stringify({ requestId: event.requestId, feature: event.feature, action: event.action, outcome: "failure", errorCode: "LOG_SERIALISATION_FAILED" }));
