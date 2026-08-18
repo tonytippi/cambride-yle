@@ -13,3 +13,11 @@ Thumbs.db
 # Keep BMad deliverables under version control
 !_bmad-output/
 !_bmad-output/**
+.next/
+node_modules/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.local
+!.env.example

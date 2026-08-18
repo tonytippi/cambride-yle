@@ -1,0 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Nunito+Sans:wght@800&display=swap");
+
+:root { --surface-base:#F7FAF7; --surface-raised:#FFFFFF; --surface-soft:#EAF4EF; --ink-primary:#19332B; --ink-secondary:#52655E; --primary:#176B4D; --focus:#8A5200; --border:#CFE0D7; --radius-md:12px; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--surface-base); color:var(--ink-primary); font:400 18px/1.5 "Atkinson Hyperlegible", system-ui, sans-serif; }
+button { min-height:48px; padding:12px 20px; border:0; border-radius:var(--radius-md); background:var(--primary); color:#fff; font:700 16px/1.35 "Atkinson Hyperlegible", system-ui, sans-serif; cursor:pointer; }
+:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+.shell { min-height:100vh; padding:32px 16px; display:grid; place-items:center; }
+.welcome { width:min(100%, 640px); padding:32px; border:1px solid var(--border); border-radius:18px; background:var(--surface-raised); }
+.eyebrow { margin:0; color:var(--ink-secondary); font-size:16px; font-weight:700; }
+h1 { margin:8px 0 16px; font:800 28px/1.2 "Nunito Sans", system-ui, sans-serif; }
+.welcome p:not(.eyebrow) { margin:0 0 24px; }
+@media (min-width: 768px) { .shell { padding-inline:32px; } }
