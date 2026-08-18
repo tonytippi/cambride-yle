@@ -15,6 +15,7 @@ _bmad/
 !_bmad-output/
 !_bmad-output/**
 .next/
+next-env.d.ts
 tsconfig.tsbuildinfo
 node_modules/
 coverage/
