@@ -131,7 +131,7 @@ Use `{rounded.lg}` for answer options, media cards, and learning surfaces. Use `
 
 | Do | Don't |
 | --- | --- |
-| Make one question and one response action visually dominant | Put competing tips, score widgets, or unrelated recommendations beside a question |
+| Make one question and one response action visually dominant | Put competing tips, score widgets, or unrelated recommendations beside a question; recommendations belong before a set starts |
 | Use original, accessible learning media | Recreate or closely imitate protected Cambridge pages, illustrations, scripts, or layouts |
 | Reserve correctness styling for after submission | Reveal right/wrong feedback while a practice set is in progress |
 | Pair every state colour with a plain-language label | Depend on colour, icons, or facial expressions alone |

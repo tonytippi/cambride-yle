@@ -4,7 +4,7 @@ type: architecture-spine
 purpose: build-substrate
 altitude: feature
 paradigm: modular-monolith-with-ports-and-adapters
-scope: Responsive web/PWA pilot for Starters learner practice, teacher evidence, content workflow, admin accounts, cohorts, and supervised diagnostics.
+scope: Responsive web/PWA pilot for Starters self-directed practice, teacher evidence, content workflow, admin accounts, and supervised first practice.
 status: current-with-open-gates
 created: 2026-08-17
 updated: 2026-08-18
@@ -13,7 +13,7 @@ binds:
   - deterministic-scoring
   - teacher-evidence
   - content-publication
-  - account-and-cohort-management
+  - account-management
   - media-and-pwa
 sources:
   - ../../prds/prd-CambridgeYLE-2026-08-17/prd.md
@@ -25,13 +25,13 @@ companions:
 
 # Architecture Spine - CambridgeYLE P0
 
-> This document owns technical invariants, not product decisions. The PRD Decision Register owns every open gate. Architecture is not implementation-ready while `GATE-HISTORICAL-ACCESS` or another implementation-blocking gate remains open.
+> This document owns technical invariants, not product decisions. The PRD Decision Register owns every open gate. Architecture is not implementation-ready while `GATE-DATA-GOVERNANCE` or another implementation-blocking gate remains open.
 
 ## Design Paradigm
 
 **Modular monolith with ports and adapters.** A single Next.js deployment owns all P0 business capabilities. A feature owns its use-cases and persistence access; its UI routes and API transport call those use-cases. Cross-feature reads use feature query services, not direct table access. External systems are reached through ports owned by `infrastructure`.
 
-The practice domain supports exactly the five P0 engines `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze`. It exposes them only through assigned, published practice-set snapshots.
+The practice domain supports exactly the five P0 engines `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze`. It exposes them through learner-selected, published practice-set snapshots and history-based recommendations.
 
 ```mermaid
 flowchart LR
@@ -68,7 +68,7 @@ flowchart LR
 
 - **Binds:** learner-practice, deterministic-scoring, teacher-evidence
 - **Prevents:** duplicate submissions, partial result persistence, evidence that disagrees with item scores, or replayed submit requests changing an attempt
-- **Rule:** Every response/playback write requires the authenticated account ID, assignment ID, attempt ID and expected monotonic `revision`, locks the attempt, and requires `status = open`. A stale revision or another tab/device winning the write returns `ATTEMPT_REVISION_CONFLICT`; account/assignment key mismatch returns `ATTEMPT_SCOPE_MISMATCH`; a different idempotency key after finalisation or any post-submit write returns `ATTEMPT_FINALISED`. None overwrites server state. `submitAttempt(attemptId, expectedRevision, idempotencyKey)` runs once in a PostgreSQL transaction, reconciles the final client draft against the current revision, locks and closes the write set, validates its published snapshot, persists final responses/events, scores, projects evidence and marks the attempt submitted. A retry with the same key returns the saved result. The server response always returns the authoritative revision/state so the client can reload rather than merge answers silently.
+- **Rule:** Every response/playback write requires the authenticated account ID, attempt ID and expected monotonic `revision`, locks the attempt, and requires `status = open`. A stale revision or another tab/device winning the write returns `ATTEMPT_REVISION_CONFLICT`; account or practice-set key mismatch returns `ATTEMPT_SCOPE_MISMATCH`; a different idempotency key after finalisation or any post-submit write returns `ATTEMPT_FINALISED`. None overwrites server state. `submitAttempt(attemptId, expectedRevision, idempotencyKey)` runs once in a PostgreSQL transaction, reconciles the final client draft against the current revision, locks and closes the write set, validates its published snapshot, persists final responses/events, scores, projects evidence and marks the attempt submitted. A retry with the same key returns the saved result. The server response always returns the authoritative revision/state so the client can reload rather than merge answers silently.
 
 ### AD-5 - Deterministic scoring and uncertainty ownership
 
@@ -78,51 +78,51 @@ flowchart LR
 
 ### AD-6 - Authorisation at the application boundary
 
-- **Binds:** account-and-cohort-management, learner-practice, teacher-evidence, content-publication
-- **Prevents:** role checks that exist only in navigation/UI, ID-based data exposure, or teachers accessing another cohort's learner evidence
-- **Rule:** Every application use-case receives an authenticated actor and authorises both role and resource scope before reading or mutating data. Roles are `learner`, `teacher`, and `admin`; admin has P0 management authority, teacher is limited to assigned cohorts and published-set assignment, and learner is limited to own assigned attempts/results. Each assignment/attempt stores its cohort-scope snapshot. Until `GATE-HISTORICAL-ACCESS` closes, teacher access to evidence from a cohort no longer currently assigned to that teacher is default-deny; implementation must not infer a retention-access rule.
+- **Binds:** account-management, learner-practice, teacher-evidence, content-publication
+- **Prevents:** role checks that exist only in navigation/UI, ID-based data exposure, or unapproved centre-wide access to child data
+- **Rule:** Every application use-case receives an authenticated actor and authorises both role and resource scope before reading or mutating data. Roles are `learner`, `teacher`, `academic_lead` and `admin`. Learner is limited to own practice choices, attempts and results. Teacher reads published content and detailed evidence for every learner account only after `GATE-DATA-GOVERNANCE` closes. `academic_lead` additionally creates, edits, reruns, approves and publishes content, and resolves uncertain outcomes. Admin has all P0 permissions and manages roles. Every staff evidence read and mutation writes an audit event. P0 has no cohort, class or teacher-assignment scope.
 
 ### AD-7 - Media security and PWA caching boundary
 
 - **Binds:** media-and-pwa, learner-practice, content-publication
 - **Prevents:** public enumeration of learner media, starting incomplete listening tasks, stale answer-bearing data in browser caches, or object storage being treated as a source of truth
-- **Rule:** PostgreSQL owns media metadata, approval/version state, and associations; private S3-compatible storage holds binary objects. The server issues short-lived authorised media URLs only for a published snapshot. Before an attempt starts, the client verifies all essential snapshot assets are available. Every cache/IndexedDB key is namespaced by authenticated account ID plus assignment/attempt and set-version IDs; account switch, sign-out or deactivation clears the previous account's authorised assets and drafts before rendering the next account. A key/account mismatch is rejected, never adopted. Teacher/admin accessibility metadata is role-scoped; publication rejects learner-facing text/transcripts that reveal an answer. A required equivalent task is a separately approved variant linked to the same primary learning objective, selected before attempt creation, snapshot with learner-safe metadata, and marked with an evidence-comparability flag; a revealing transcript/alt text is never used as the variant. The service worker caches the application shell and authorised set assets only; IndexedDB stores local open-attempt drafts only; neither stores answer-review or teacher-evidence payloads.
+- **Rule:** PostgreSQL owns media metadata, approval/version state, and associations; private S3-compatible storage holds binary objects. The server issues short-lived authorised media URLs only for a published snapshot. Before an attempt starts, the client verifies all essential snapshot assets are available. Every cache/IndexedDB key is namespaced by authenticated account ID plus attempt and set-version IDs; account switch, sign-out or deactivation clears the previous account's authorised assets and drafts before rendering the next account. A key/account mismatch is rejected, never adopted. Teacher/admin accessibility metadata is role-scoped; publication rejects learner-facing text/transcripts that reveal an answer. A required equivalent task is a separately approved variant linked to the same primary learning objective, selected before attempt creation, snapshot with learner-safe metadata, and marked with an evidence-comparability flag; a revealing transcript/alt text is never used as the variant. The service worker caches the application shell and authorised set assets only; IndexedDB stores local open-attempt drafts only; neither stores answer-review or teacher-evidence payloads.
 
 ### AD-8 - Account deactivation, audit, and PII minimization
 
-- **Binds:** account-and-cohort-management, supervised-diagnostic, teacher-evidence
+- **Binds:** account-management, supervised-first-practice, teacher-evidence
 - **Prevents:** deactivated users retaining a session, accidental irreversible data loss, or audit trails that retain learner answers unnecessarily
-- **Rule:** Account deactivation is an admin-only server transaction that sets `deactivated_at`/`deactivated_by`, revokes active sessions, prevents all future authentication/authorisation, and emits an audit event containing actor, action, target opaque ID, and timestamp only. P0 retains practice and diagnostic records after deactivation and does not implement automatic purge; store the minimum account profile necessary for centre operation and do not introduce speaking recordings.
+- **Rule:** Account deactivation is an admin-only server transaction that sets `deactivated_at`/`deactivated_by`, revokes active sessions, prevents all future authentication/authorisation, and emits an audit event containing actor, action, target opaque ID, and timestamp only. P0 retains practice and first-practice records after deactivation and does not implement automatic purge; store the minimum account profile necessary for centre operation and do not introduce speaking recordings.
 
 ### AD-9 - Schema migrations and typed boundary validation
 
 - **Binds:** all P0 capabilities
 - **Prevents:** manual production schema edits, schema/code drift, or trusting browser/admin payloads as valid curriculum/content data
-- **Rule:** PostgreSQL changes ship as reviewed, ordered Drizzle migrations and execute before application rollout. All external input is parsed with shared Zod schemas at the route/action boundary; domain/use-case input types are inferred from or mapped from those validated contracts. Before review/publication, server validation emits publish-blocking results for required tags, allowed vocabulary/grammar, approved names/numbers, task-template sentence/option limits, answer keys/alternatives, and required approved media. An academic exception is explicit, justified, and audit logged.
+- **Rule:** PostgreSQL changes ship as reviewed, ordered Drizzle migrations and execute before application rollout. All external input is parsed with shared Zod schemas at the route/action boundary; domain/use-case input types are inferred from or mapped from those validated contracts. Before review/publication, server validation emits publish-blocking results for required tags, allowed vocabulary/grammar, approved names/numbers, task-template sentence/option limits, answer keys/alternatives, and required approved media. An `academic_lead` or admin exception is explicit, justified, and audit logged.
 
-### AD-10 - Evidence projection and diagnostic scope
+### AD-10 - Evidence projection and first-practice scope
 
-- **Binds:** teacher-evidence, supervised-diagnostic, deterministic-scoring
-- **Prevents:** dashboards with incompatible aggregation dimensions, uncertain outcomes counted as right/wrong, and a P0 diagnostic product flow beyond approved practice infrastructure
-- **Rule:** Evidence facts derive only from immutable item snapshots and expose learner, cohort-scope, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, practice set, submitted time, automatic outcome, and effective outcome. Product evidence states are only `secure`, `building`, `needs practice`, and `not assessed yet`. Automatic correctness aggregates exclude unresolved `needs_teacher_review`. P0 diagnostics are admin-supervised assignments of published practice sets to pre-provisioned accounts; no separate diagnostic template, public acquisition, or self-registration flow is introduced.
+- **Binds:** teacher-evidence, supervised-first-practice, deterministic-scoring
+- **Prevents:** dashboards with incompatible aggregation dimensions, uncertain outcomes counted as right/wrong, and a P0 first-practice flow beyond published self-directed practice
+- **Rule:** Evidence facts derive only from immutable item snapshots and expose learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, practice set, submitted time, automatic outcome, and effective outcome. Product evidence states are only `secure`, `building`, `needs practice`, and `not assessed yet`. For a paper/part and language target within the previous 30 days, fewer than three assessable outcomes is `not assessed yet`, under 60% correct is `needs practice`, 60% to under 80% is `building`, and 80% or more is `secure`; unresolved `needs_teacher_review` is excluded. Recommendations rank matching published sets for `needs practice`, then `building`, then other selectable sets, and never remove learner choice. P0 first practice is admin-supervised use of published self-directed practice; no separate diagnostic template, public acquisition, or self-registration flow is introduced.
 
 ### AD-11 - Content provenance is publish-blocking
 
 - **Binds:** content-publication, media-and-pwa, learner-practice
 - **Prevents:** publishing source material with unknown rights, unpublished AI output, or later losing the evidence needed to audit an approved snapshot
-- **Rule:** Every question version and every referenced image, audio, script, and learner feedback record has immutable provenance metadata: `origin` (`original`, `licensed`, or `generated`), creator/source reference, rights or license reference where applicable, and generation metadata where applicable. Publication rejects incomplete provenance and snapshots this metadata with the published set. AI-originated records remain drafts until human content and academic review approve them.
+- **Rule:** Every question version and every referenced image, audio, script, and learner feedback record has immutable provenance metadata: `origin` (`original`, `licensed`, or `generated`), creator/source reference, rights or license reference where applicable, and generation metadata where applicable. Publication rejects incomplete provenance and snapshots this metadata with the published set. AI-originated records remain drafts until an `academic_lead` or admin approves them.
 
 ### AD-12 - Separate content state machines and grandfathering
 
 - **Binds:** content-publication, learner-practice, media-and-pwa
-- **Prevents:** one asset state implicitly publishing another, rejection destroying review history, source revision mutating a publication, or retirement breaking an assigned attempt
-- **Rule:** Question versions, media versions and practice-set versions each enforce their own `draft -> in_review -> approved -> published -> retired` transitions. `in_review -> rejected` records actor/reason/time and creates a new editable draft version; revision never mutates a published version. Set publication atomically verifies every referenced question/media version is published and snapshots it. Retirement prevents new publication/assignment but grandfathers existing assignments and open/submitted attempts against immutable snapshot/media versions.
+- **Prevents:** one asset state implicitly publishing another, rejection destroying review history, source revision mutating a publication, or retirement breaking an active attempt
+- **Rule:** Question versions, media versions and practice-set versions each enforce their own `draft -> in_review -> approved -> published -> retired` transitions. `in_review -> rejected` records actor/reason/time and creates a new editable draft version; revision never mutates a published version. Set publication atomically verifies every referenced question/media version is published and snapshots it. Retirement prevents new publication/selection but grandfathers open/submitted attempts against immutable snapshot/media versions. An AI provider may create structured drafts only after `GATE-AI-DRAFT-PROVIDER` closes. The server calls the configured OpenAI-compatible AI Gateway using a server-only API key; every AI draft records gateway/model/prompt provenance and still requires `academic_lead`/admin review and manual publication.
 
-### AD-13 - Assignment identity and unresolved policy boundary
+### AD-13 - Self-directed selection and recommendation boundary
 
-- **Binds:** account-and-cohort-management, learner-practice, teacher-evidence, supervised-diagnostic
-- **Prevents:** a cohort action silently changing existing learner assignments, inconsistent due-date metrics, duplicate identity collisions, or implementation inventing transfer/withdrawal semantics
-- **Rule:** Every learner-visible assignment has an immutable opaque assignment ID, learner ID, published set-version ID and creation actor/time; attempt identity and authorisation bind to that record. `GATE-ASSIGNMENT-POLICY` must close before implementation chooses cohort materialisation, late join/removal, duplicate assignment, availability/due timestamps, centre timezone, status or withdrawal behaviour. Until then no derived artefact may infer those semantics.
+- **Binds:** learner-practice, teacher-evidence, supervised-first-practice
+- **Prevents:** recommendation output becoming mandatory practice, retired content being selected, or recommendation logic exposing another learner's data
+- **Rule:** A learner starts an attempt from a selected published set version. The recommendation query reads only that learner's immutable evidence facts and ranks eligible published sets by the evidence-state order in AD-10. It records recommendation version and shown set IDs for audit, does not create an assignment record, and always allows the learner to choose another published set by topic or task type.
 
 ## Consistency Conventions
 
@@ -131,10 +131,10 @@ flowchart LR
 | Naming | TypeScript uses `camelCase`; database uses `snake_case`; feature names use singular kebab-case directories; opaque UUIDv7 IDs are exposed outside the database. |
 | Time and state | Persist `timestamptz` in UTC. Lifecycle states are explicit database enums/check constraints, never inferred from nullable fields. |
 | API and errors | Route handlers return `{ data }` on success or `{ error: { code, message } }` on expected failure. Use stable machine codes; do not reveal login/account existence details. |
-| Mutations | All mutation handlers authenticate, authorise, parse Zod input, invoke one application use-case, and write an audit event when content status, assignment, account/cohort, or teacher-review state changes. |
+| Mutations | All mutation handlers authenticate, authorise, parse Zod input, invoke one application use-case, and write an audit event when content status, AI-draft request, account, teacher-evidence read, or teacher-review state changes. |
 | Transactions | A use-case owns its transaction boundary. Repositories do not start nested transactions. Finalisation, publication, account deactivation, and teacher review are transactional. |
 | Logs and audit | Structured application logs use request ID, actor opaque ID, feature/action, outcome, and error code. Never log passwords, session IDs, learner responses, answer keys, signed URLs, or raw audio. |
-| Configuration | Environment variables are parsed at startup. Secrets are server-only. Browser-visible configuration is limited to non-secret public values. |
+| Configuration | Environment variables are parsed at startup. The OpenAI-compatible gateway endpoint, model identifier and API key are server-only; browser-visible configuration is limited to non-secret public values. |
 
 ## Stack
 
@@ -162,13 +162,12 @@ src/
   app/                         # App Router pages, layouts, route handlers
   features/
     identity/                  # accounts, sessions, actor authorisation
-    cohorts/                   # cohorts, enrolments, teacher scope
     curriculum/                # vocabulary, grammar, topics, validation
     content/                   # questions, media metadata, review, publication
-    practice/                  # assignments, attempts, snapshots, player queries
+    practice/                  # selection, recommendations, attempts, snapshots, player queries
     scoring/                   # answer-policy normalisation and deterministic scorer
     evidence/                  # teacher projections, aggregation, review resolution
-    diagnostics/               # supervised diagnostic setup and account lifecycle
+    first-practice/            # supervised first-practice setup and account lifecycle
   shared/                      # cross-feature contracts, primitives, error types
   infrastructure/              # Drizzle/Postgres, object storage, auth, audit adapters
   pwa/                         # service worker and IndexedDB draft adapter
@@ -185,15 +184,12 @@ tests/
 ```mermaid
 erDiagram
   ACCOUNT ||--o{ SESSION : owns
-  ACCOUNT ||--o{ ENROLMENT : has
-  COHORT ||--o{ ENROLMENT : contains
-  ACCOUNT ||--o{ ASSIGNMENT : receives
-  PRACTICE_SET_VERSION ||--o{ ASSIGNMENT : is_assigned
   PRACTICE_SET_VERSION ||--o{ SET_ITEM_SNAPSHOT : contains
   QUESTION ||--o{ QUESTION_VERSION : versions
   QUESTION_VERSION ||--o{ SET_ITEM_SNAPSHOT : snapshots
   MEDIA_ASSET ||--o{ QUESTION_VERSION : supports
-  ASSIGNMENT ||--o{ ATTEMPT : starts
+  ACCOUNT ||--o{ ATTEMPT : starts
+  PRACTICE_SET_VERSION ||--o{ ATTEMPT : selected_for
   ATTEMPT ||--o{ ITEM_RESPONSE : records
   SET_ITEM_SNAPSHOT ||--o{ ITEM_RESPONSE : answered_as
   ITEM_RESPONSE ||--o{ PLAYBACK_EVENT : observes
@@ -217,27 +213,26 @@ flowchart TB
 
 | Capability / Area | Lives in | Governed by |
 | --- | --- | --- |
-| Admin-created sign-in, sessions, roles, deactivation | `identity`, `cohorts` | AD-1, AD-6, AD-8, AD-9 |
-| Cohorts, enrolment, teacher scope | `cohorts` | AD-1, AD-6, AD-9 |
+| Admin-created sign-in, sessions, roles, deactivation | `identity` | AD-1, AD-6, AD-8, AD-9 |
 | Starters tags, allowed vocabulary/grammar validation | `curriculum`, `content` | AD-1, AD-3, AD-9 |
-| Draft/review/approve/publish/retire content | `content` | AD-1, AD-3, AD-7, AD-9, AD-11 |
+| Draft/review/approve/publish/retire content and AI reruns | `content` | AD-1, AD-3, AD-7, AD-9, AD-11, AD-12 |
 | Original media upload, approval, preloading | `content`, `infrastructure`, `pwa` | AD-2, AD-3, AD-7, AD-8, AD-11 |
 | Five P0 task engines and learner drafts | `practice`, `pwa` | AD-1, AD-2, AD-7 |
 | Submit-then-review feedback | `practice`, `scoring` | AD-2, AD-3, AD-4, AD-5 |
 | Deterministic closed/controlled response scoring | `scoring` | AD-3, AD-4, AD-5, AD-9 |
 | Item-level teacher dashboard and review | `evidence`, `practice` | AD-2, AD-3, AD-4, AD-5, AD-6, AD-10 |
-| Assign published practice-set versions | `practice`, `cohorts` | AD-3, AD-6, AD-9, AD-12, AD-13 |
-| Supervised diagnostic and manual account deactivation | `diagnostics`, `identity`, `practice` | AD-6, AD-8, AD-9, AD-10 |
+| Learner selection and history-based recommendations | `practice`, `evidence` | AD-3, AD-6, AD-9, AD-10, AD-12, AD-13 |
+| Supervised first practice and manual account deactivation | `first-practice`, `identity`, `practice` | AD-6, AD-8, AD-9, AD-10 |
 | PWA shell, offline indication, local response recovery | `pwa`, `practice` | AD-2, AD-7 |
 
 ## Deferred
 
 - **Production deployment:** governed only by `GATE-DEPLOYMENT`; no provider, region, data-residency, budget, RPO or RTO assumption is approved here.
 - **Email delivery and password-reset mechanism:** admin-created-account flow is P0; choose provider and recovery UX before enabling self-service password recovery.
-- **Retention and irreversible data purge:** P0 deactivates accounts and retains their practice/diagnostic records; `GATE-DATA-GOVERNANCE` must close before pilot launch and a later purge feature needs a separate approved decision.
+- **Retention and irreversible data purge:** P0 deactivates accounts and retains their practice/first-practice records; `GATE-DATA-GOVERNANCE` must close before pilot launch and a later purge feature needs a separate approved decision.
 - **Automatic background submission:** P0 retains drafts locally but requires connectivity to finalise, avoiding ambiguous duplicate submission; revisit after real offline pilot evidence.
-- **Separate diagnostic templates:** P1 only, after pilot evidence; P0 reuses approved practice-set infrastructure under admin supervision.
+- **Separate diagnostic templates:** P1 only, after pilot evidence; P0 reuses published self-directed practice under admin supervision.
 - **Speaking observations and recordings:** excluded from P0 pending parent consent, retention, access, and deletion policy.
-- **AI generation provider and queueing:** AI may create structured content drafts later; it cannot cross publication/scoring boundaries and needs a separate provider, privacy, and review decision.
+- **AI Gateway configuration:** configure the supplied OpenAI-compatible endpoint and server-side API key before enabling drafts. AI cannot cross publication/scoring boundaries.
 - **Movers/Flyers, full mock templates, richer scene engines:** add as later capabilities without weakening snapshot, scorer, curriculum, or media invariants.
 - **Analytics warehouse, notifications, public acquisition, payments, native apps, microservices:** out of P0; introduce only when a measured need exceeds the modular monolith.

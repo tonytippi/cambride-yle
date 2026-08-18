@@ -1,7 +1,7 @@
 # Starters Curriculum And Assessment Blueprint
 
-**Status:** Current curriculum authority; blocked by `GATE-ACADEMIC-SOURCES` and `GATE-CONTENT-PLAN`
-**Scope:** Responsive web/PWA P0, Pre A1 Starters assigned practice; teacher-led speaking is deferred.
+**Status:** Current curriculum authority; `GATE-CONTENT-PLAN` closed, public claims remain blocked by `GATE-ACADEMIC-SOURCES`
+**Scope:** Responsive web/PWA P0, Pre A1 Starters self-directed practice; teacher-led speaking is deferred.
 **Last reviewed:** 2026-08-18
 
 ## 1. Purpose
@@ -14,7 +14,7 @@ The first product goal is to make online practice useful for an offline teacher:
 
 ### 1.1 P0 cross-domain invariants
 
-P0 delivers assigned practice through exactly five engines: `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze`. Evidence uses only `secure`, `building`, `needs practice`, and `not assessed yet`. Account removal means explicit deactivation with session revocation and record retention; it never means automatic expiry or purge. These product invariants are repeated here only to define the boundary of curriculum/content work; the PRD remains their normative owner.
+P0 delivers self-directed practice through exactly five engines: `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking`, and `word_bank_cloze`. Learners may choose a published practice set by topic or engine; the system may recommend published sets from their evidence history. Evidence uses only `secure`, `building`, `needs practice`, and `not assessed yet`. Account removal means explicit deactivation with session revocation and record retention; it never means automatic expiry or purge. These product invariants are repeated here only to define the boundary of curriculum/content work; the PRD remains their normative owner.
 
 ## 2. Source References And Content Policy
 
@@ -27,7 +27,7 @@ P0 delivers assigned practice through exactly five engines: `picture_true_false`
 - `docs/cambridge-young-learners-wordlist.md`
   - Historical 2018 reference only. It must not silently fill a gap, discrepancy or citation missing from the 2025 edition.
 
-`docs/source-manifest.md` exclusively owns provenance, checksums and verification status for these read-only imports. The 2025 edition is the working curriculum reference, not learner-facing content. `GATE-ACADEMIC-SOURCES` blocks content production, review, publication and public curriculum claims until the academic lead verifies the editions, citations and discrepancies.
+`docs/source-manifest.md` exclusively owns provenance, checksums and verification status for these read-only imports. The 2025 edition is the working curriculum reference, not learner-facing content. An `academic_lead` or `admin` must close `GATE-ACADEMIC-SOURCES` before public curriculum claims rely on the imports.
 
 ### 2.2 Content rules
 
@@ -72,7 +72,7 @@ Speaking is not in the first self-directed practice release. The first speaking 
 
 ## 4. Delivery Modes And Release Boundaries
 
-### 4.1 Assigned practice: P0 pilot
+### 4.1 Self-directed practice: P0 pilot
 
 Practice sets are 5-10 minute activities targeting one paper part and one or two learning objectives. They may permit replay, but show answers and feedback only after the learner submits the complete set.
 
@@ -164,7 +164,7 @@ Before a question can be reviewed, automated validation must report:
 - Sentence length and option count outside task-template limits.
 - Missing target tags, answer keys, alternatives, or required media.
 
-Validation flags items for review; the academic lead decides whether a flagged exception is acceptable.
+Validation flags items for review; an `academic_lead` or `admin` decides whether a flagged exception is acceptable.
 
 ## 6. Question, Response, And Scene Model
 
@@ -300,7 +300,7 @@ Review decision:  in_review -> rejected -> new draft version
 Revision:         any editable source -> new version; published snapshot unchanged
 ```
 
-Publishing a set atomically snapshots only published question and media versions. Retirement prevents future assignment/publication but grandfathers every existing assignment, active attempt and completed result against its immutable snapshot. A revised source can be published only as a new version.
+Publishing a set atomically snapshots only published question and media versions. Retirement prevents future selection/publication but grandfathers active attempts and completed results against their immutable snapshots. A revised source can be published only as a new version.
 
 AI may generate structured drafts only. It cannot publish material, approve its own output, or determine correctness of learner answers.
 
@@ -321,8 +321,8 @@ AI may generate structured drafts only. It cannot publish material, approve its 
 - The system creates a 20-item Listening paper and a 25-item Reading and Writing paper from approved items.
 - Audio, answer-key, timing, and media preload policies are enforced by the test template.
 - The result report breaks down evidence by paper, part, vocabulary/grammar target, and topic.
-- Academic lead signs off the format and content QA checklist before learner access.
+- An `academic_lead` or `admin` signs off the format and content QA checklist before learner access.
 
 ## 11. Governed Gates
 
-The PRD Decision Register is the only normative inventory of open decisions. This blueprint is affected by `GATE-ACADEMIC-SOURCES`, `GATE-CONTENT-PLAN` and `GATE-PUBLIC-WORDING`; it does not duplicate or close them. Feedback remains post-submit only, and the five-engine P0 boundary above is fixed.
+The PRD Decision Register is the only normative inventory of open decisions. `GATE-CONTENT-PLAN` is closed: this blueprint is teacher-facing guidance for creation and review, rather than a fixed content quota, and every set receives individual `academic_lead`/admin approval. `GATE-ACADEMIC-SOURCES` and `GATE-PUBLIC-WORDING` remain open. Feedback remains post-submit only, and the five-engine P0 boundary above is fixed.

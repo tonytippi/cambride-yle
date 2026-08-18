@@ -1,7 +1,7 @@
 # Imported Source Manifest
 
 **Status:** Current provenance register; academic verification open
-**Owner:** Academic lead (to be named through `GATE-ACADEMIC-SOURCES`)
+**Owner:** System role `academic_lead` or `admin`
 **Last checked:** 2026-08-18
 
 This manifest is the sole owner of provenance, checksum and verification status for imported curriculum evidence. Imported files are read-only evidence, not editable product contracts or learner-facing content. A checksum mismatch is a blocking integrity finding; a source discrepancy or citation gap is an academic finding and must not be silently repaired from another edition.
@@ -14,6 +14,6 @@ This manifest is the sole owner of provenance, checksum and verification status 
 
 ## Verification protocol
 
-The academic lead must record the official publication title, publisher URL, edition/date, acquisition date, conversion/export method, citation locations used by the blueprint, and any discrepancy between the imported export and official source. Until then the 2025 edition is a working reference only and no public curriculum/alignment claim may rely on it.
+An `academic_lead` or `admin` must record the official publication title, publisher URL, edition/date, acquisition date, conversion/export method, citation locations used by the blueprint, and any discrepancy between the imported export and official source. Until then the 2025 edition is a working reference only and no public curriculum/alignment claim may rely on it.
 
 Never edit, rename or delete the three imported files without owner approval. Update this manifest only after byte-level comparison and academic review; do not normalise whitespace or line endings in the source exports.

@@ -13,7 +13,7 @@ superseded_by: prd.md
 
 The P0 architecture is a modular monolith with ports and adapters in a single Next.js deployment. It uses PostgreSQL as the system of record, private S3-compatible object storage for media, and browser storage only for PWA shell/assets and recoverable open-attempt drafts.
 
-The expected feature boundaries are identity, cohorts, curriculum, content, practice, scoring, evidence, diagnostics, shared contracts, infrastructure, and PWA. UI routes and transport call application use-cases; feature cross-reads use typed feature query/use-case contracts rather than direct database table access.
+The expected feature boundaries are identity, curriculum, content, practice, scoring, evidence, first-practice setup, shared contracts, infrastructure, and PWA. UI routes and transport call application use-cases; feature cross-reads use typed feature query/use-case contracts rather than direct database table access.
 
 External input is validated at the boundary. Mutations authorise actor and resource scope, invoke one application use-case, and audit designated actions. Database changes ship as reviewed ordered migrations.
 

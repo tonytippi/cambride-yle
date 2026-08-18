@@ -10,11 +10,11 @@ updated: 2026-08-18
 
 # CambridgeYLE Experience Spine
 
-> This document owns behaviour; `DESIGN.md` owns visual rules and the PRD owns decisions/gates. It does not close `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS` or `GATE-HISTORICAL-ACCESS`.
+> This document owns behaviour; `DESIGN.md` owns visual rules and the PRD owns decisions/gates. It does not close `GATE-DATA-GOVERNANCE`, `GATE-PRODUCT-ASSUMPTIONS` or `GATE-AI-DRAFT-PROVIDER`.
 
 ## Foundation
 
-Responsive web application and installable PWA. Learner practice is mobile-first; teacher, admin, and content-editor work is efficient on desktop but remains usable on tablets. `DESIGN.md` owns visual identity; this document owns behaviour. The P0 UI system is component-based but no library is selected yet.
+Responsive web application and installable PWA. Learner practice is mobile-first; teacher, `academic_lead`, and admin work is efficient on desktop but remains usable on tablets. `DESIGN.md` owns visual identity; this document owns behaviour. The P0 UI system is component-based but no library is selected yet.
 
 The product is a Starters practice application, not an official exam service. It shows only original, approved content and uses only the evidence states `secure`, `building`, `needs practice`, and `not assessed yet`. Listening and Reading/Writing are deterministically scored. Speaking, parent accounts, self-registration, payment, and a full mock are outside P0.
 
@@ -23,20 +23,19 @@ The product is a Starters practice application, not an official exam service. It
 | Surface | Reached from | Purpose |
 | --- | --- | --- |
 | Sign in | App entry | Authenticate an admin-created learner, teacher, or admin account. |
-| Learner home | Sign in, learner navigation | Show assigned practice sets, resumable drafts, and recent completed results. |
+| Learner home | Sign in, learner navigation | Choose published practice by topic/task type, see history-based recommendations, resumable drafts, and recent completed results. |
 | Practice preparation | Learner home | Confirm media preload and readiness before a set begins. |
-| Practice player | Preparation or recovered draft | Complete one assigned, published practice set without seeing answers or correctness. |
+| Practice player | Preparation or recovered draft | Complete one learner-selected, published practice set without seeing answers or correctness. |
 | Submit confirmation | Practice player | Make the learner intentionally finish the complete set. |
 | Result summary | Submission | Show completed status, product-owned evidence labels, and answer-review entry point. |
 | Answer review | Result summary | Compare each submitted response with the approved answer after submission. |
-| Teacher cohort dashboard | Teacher navigation | Identify patterns by cohort, learner, paper, part, and language target. |
-| Learner evidence detail | Cohort dashboard | Inspect a learner's completed sets and item-level evidence. |
-| Assignment flow | Teacher dashboard | Assign a published set version to one learner or cohort. |
-| Admin accounts and cohorts | Admin navigation | Create, edit, enrol, and deactivate accounts; manage cohorts. |
-| Content library | Admin navigation | Search/filter approved and unpublished questions and practice sets. |
-| Question editor and review | Content library | Author, validate, preview, review, publish, retire a question. |
-| Practice-set composer | Content library | Assemble only published question/media versions into a set version; assign only after set publication. |
-| Diagnostic setup | Admin navigation | Create a supervised prospective-learner account and assign a diagnostic practice set. |
+| Teacher evidence dashboard | Teacher navigation | Identify patterns by learner, paper, part, and language target across the centre. |
+| Learner evidence detail | Teacher dashboard | Inspect a learner's completed sets and item-level evidence. |
+| Admin accounts | Admin navigation | Create, edit, and deactivate accounts. |
+| Content library | Academic lead/admin navigation; teacher read-only navigation | Academic lead/admin search and manage all content; teacher reads published questions and practice sets. |
+| Question editor and review | Content library | Academic lead/admin author, request/edit/rerun AI drafts, validate, preview, approve, publish and retire a question. |
+| Practice-set composer | Content library | Assemble only published question/media versions into a set version; publish for learner selection. |
+| First-practice setup | Admin navigation | Create a supervised prospective-learner account and help select a published practice set. |
 
 Learner navigation is a simple home-first header. Teacher/admin navigation is a labelled left rail on desktop and a labelled menu sheet on narrow screens. A user sees only surfaces allowed by their role. Dialogs do not stack.
 
@@ -59,7 +58,7 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 
 | Component | Use | Behavioral rules |
 | --- | --- | --- |
-| Practice-set card | Learner home | Shows title, part, estimated time, and `Start`, `Resume`, or `Review`. It never shows a predicted score. |
+| Practice-set card | Learner home | Shows title, topic, task type, estimated time, and `Start`, `Resume`, or `Review`. A recommendation explains its relevant practice area without implying a score or removing other choices. |
 | Media readiness panel | Practice preparation | Lists required audio/image downloads. `Start` stays unavailable until essentials are available; retry is explicit on failure. |
 | Practice header | Player | Shows question position and `Save and leave`. It does not expose score, correctness, or answers. |
 | Choice/boolean/yes-no input | Player | Exactly one answer selected; learner can change it until submission. Selection is announced and remains visible. |
@@ -67,9 +66,9 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Audio player | Listening | Has accessible play/replay action. Playback events are stored. Template playback rules determine replay limits; seeking is not offered unless a template permits it. |
 | Submit confirmation | Player | States answered/unanswered count. `Submit practice` is available only after an explicit confirmation; unanswered items remain permitted and are recorded as unanswered. |
 | Answer-review row | Post-submission only | Shows prompt/media reference, learner response, approved answer, correct/incorrect/needs-teacher-review result, and approved explanation. |
-| Evidence filter | Teacher surfaces | Filters learner, cohort, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set. Filters update summaries and drill-down together. |
-| Status workflow control | Editor | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers existing assignments and attempts. |
-| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains P0 practice/diagnostic records only after explicit named confirmation; action is audit logged. |
+| Evidence filter | Teacher surfaces | Filters learner, paper, part, vocabulary, grammar, spelling, names, numbers, colours, positions, topic, time range, and practice set. Filters update summaries and drill-down together; every teacher evidence read is audit logged. |
+| Status workflow control | Academic lead/admin | Shows separate versioned workflows for questions, media and sets: `draft -> in_review -> approved -> published -> retired`. Academic lead/admin can request, edit and rerun AI drafts through the configured gateway. AI-created drafts display provider/model/prompt provenance and cannot bypass human review. Rejection records actor/reason/time and creates a new draft version; revision never mutates publication; retirement grandfathers active attempts. |
+| Deactivate-account dialog | Admin | Requires account identifier and consequence text. Deactivates the account, revokes active sessions, prevents future login and retains P0 practice/first-practice records only after explicit named confirmation; action is audit logged. |
 
 ## Task Engine Behavior
 
@@ -85,8 +84,8 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 
 | State | Surface | Treatment |
 | --- | --- | --- |
-| First learner visit | Learner home | Explain that practice answers appear after a completed set. Show assigned sets or a clear empty state. |
-| No assigned practice | Learner home | `No practice set is ready yet.` Do not fabricate recommendations. |
+| First learner visit | Learner home | Explain that practice answers appear after a completed set. Show topic/task-type choices and a clear recommendation-empty state. |
+| No recommendation yet | Learner home | `Choose a topic to start practising.` Do not fabricate evidence-based claims before enough completed items exist. |
 | Draft available | Learner home | One `Resume` action with last saved time; `Start again` requires confirmation and preserves prior submitted attempts. |
 | Draft changed elsewhere | Learner home/player | A stale revision from another tab/device is not merged or overwritten. Show `This practice changed somewhere else`, preserve the visible unsent input separately, and offer `Reload latest` or `Leave`. |
 | Account switch or sign-out | All learner surfaces | Clear the previous account's authorised media and draft namespace before showing another account. A draft/cache key mismatch is blocked and never attached to the new learner. |
@@ -98,12 +97,12 @@ Behavioral rules; visual rules are in `DESIGN.md.Components`.
 | Save/recovery error | Player | Keep the visible answer; show retry state. Never claim it is saved if it is not. |
 | Unanswered questions | Submit confirmation | State count and provide `Review questions` or `Submit anyway`; no forced answer. |
 | Scoring in progress | Result transition | Show a brief non-blocking completion state. Do not expose an incomplete score. |
-| Empty teacher evidence | Dashboard | `No completed practice yet for this selection.` Offer filters reset; do not infer a learning level. |
+| Empty teacher evidence | Dashboard | `No completed practice yet for this selection.` Offer filters reset; do not infer a learning level. Every signed-in teacher may open a learner detail after `GATE-DATA-GOVERNANCE` closes. |
 | `not assessed yet` | Teacher/learner result | State that there is insufficient completed evidence, not a deficiency. |
 | Item needs teacher review | Result and dashboard | Mark as `Needs teacher review`; exclude it from automatic correct-rate calculations until resolved. |
 | Permission denied | All protected routes | Redirect to the role's home with `You do not have access to that page.` |
 | Retired content in old result | Review | Preserve completed attempt and original item version for teacher review; never re-score it against a replacement. |
-| Deactivated account | Sign in/admin account detail | Reject sign-in with a generic failure. Admin sees that the account is deactivated and can review its audit history; P0 does not purge practice or diagnostic records automatically. |
+| Deactivated account | Sign in/admin account detail | Reject sign-in with a generic failure. Admin sees that the account is deactivated and can review its audit history; P0 does not purge practice or first-practice records automatically. |
 
 ## Interaction Primitives
 
@@ -141,14 +140,14 @@ PWA installation is optional. The app makes install availability discoverable bu
 - The UI must not reproduce protected assessment text, images, audio scripts, layouts, or answer keys. Content preview and review retain provenance and approval metadata.
 - AI-created content is visibly a draft in the editor and cannot bypass validator, academic review, or mobile preview.
 - Every result remains associated with the question and answer-policy version used at submission.
-- Only admin-created accounts can sign in. Diagnostic accounts are supervised, not a public sign-up route.
+- Only admin-created accounts can sign in. First-practice accounts are supervised, not a public sign-up route.
 
 ## Key Flows
 
 ### Flow 1 - Complete a practice set (Linh, 7, on her mother's phone after class)
 
 1. Linh signs in with the account created by the centre.
-2. Learner home shows an assigned `Listening Part 3: Animals` set, marked `About 6 minutes`.
+2. Learner home shows topic and task-type choices plus a `Listening Part 3: Animals` recommendation, marked `About 6 minutes`, because it relates to a recent practice area.
 3. She chooses `Start`. The preparation surface confirms that all three audio clips and pictures are ready.
 4. The player presents one question at a time. Linh taps replay, then chooses a picture. She changes one earlier answer without seeing whether either choice is right.
 5. She reaches the end. The confirmation says `You answered 5 of 5 questions. When you submit, you can check your answers.`
@@ -159,29 +158,29 @@ Failure: an audio asset fails before start -> preparation names the problem and 
 
 ### Flow 2 - Prepare an offline intervention (Mai, Starters teacher, 20 minutes before class)
 
-1. Mai signs in on her laptop and opens her cohort dashboard.
+1. Mai signs in on her laptop and opens the teacher evidence dashboard.
 2. She filters to completed practice from the last seven days and sees `Listening Part 2` as `needs practice` for several learners.
 3. She filters the target to `numbers` and opens Linh's evidence detail.
 4. The detail shows submitted name/number responses, attempt times, audio replay events, and any item marked `needs teacher review`.
 5. **Climax:** Mai identifies a concrete offline activity: number dictation with extra support for two learners, instead of rechecking every home worksheet manually.
-6. She assigns a published follow-up set to the cohort. It appears on learner home; no live monitoring is expected.
+6. She guides Linh to the published `Numbers` topic for her next practice; learner choice remains available and no live monitoring is expected.
 
 Failure: no completed data matches the filter -> dashboard says there is not enough completed evidence and allows Mai to reset filters rather than implying a weakness.
 
-### Flow 3 - Publish a safe practice set (An, admin/content editor, on desktop)
+### Flow 3 - Publish a safe practice set (An, academic lead, on desktop)
 
 1. An opens a draft question in the content library.
 2. The editor shows its required task metadata, answer policy, target vocabulary/grammar, original media, and validation flags.
-3. An fixes missing tags and sends the item to academic review. The reviewer approves it.
+3. An fixes missing tags, edits or reruns the AI draft if needed, and approves it as an `academic_lead`.
 4. An uses the phone-width preview to verify that image regions, audio controls, and answer options are usable.
-5. An publishes the question/media versions, composes and publishes an immutable set version, and assigns it to Mai's cohort.
+5. An may request an AI-generated structured draft, then manually publishes reviewed question/media versions and an immutable set version for learner selection.
 6. **Climax:** The set is available to learners with all required media and deterministic answer policy attached; the teacher receives evidence that can be used offline.
 
 Failure: validator finds vocabulary outside the allowed Starters set or missing media -> publish remains unavailable and the editor identifies the field needing review.
 
-### Flow 4 - Supervised diagnostic and deactivation (Quang, centre admin, with a prospective learner)
+### Flow 4 - Supervised first practice and deactivation (Quang, centre admin, with a prospective learner)
 
-1. Quang creates a temporary learner account and assigns a published diagnostic practice set.
+1. Quang creates a temporary learner account and helps the learner choose a published practice set.
 2. The learner completes it under supervision and receives post-submission practice feedback.
 3. Quang or a teacher reviews implemented-part evidence to support a placement conversation, without presenting an official result.
 4. **Climax:** If the family does not continue, Quang opens the account record, confirms the named deactivation action, and immediately prevents future sign-in.

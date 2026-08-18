@@ -1,6 +1,6 @@
 # CambridgeYLE
 
-CambridgeYLE là ứng dụng web/PWA hỗ trợ `learner` Pre A1 Starters hoàn thành `assigned practice` ngắn tại nhà; giáo viên dùng bằng chứng ở mức câu hỏi để chuẩn bị củng cố có mục tiêu tại trung tâm. P0 chỉ gồm năm engine: `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking` và `word_bank_cloze`.
+CambridgeYLE là ứng dụng web/PWA hỗ trợ `learner` Pre A1 Starters tự chọn luyện tập ngắn theo chủ đề/loại bài hoặc theo đề xuất từ lịch sử làm bài. Giáo viên dùng bằng chứng ở mức câu hỏi để hướng dẫn học sinh. P0 chỉ gồm năm engine: `picture_true_false`, `picture_yes_no`, `audio_picture_choice`, `audio_note_taking` và `word_bank_cloze`.
 
 ## Thứ bậc thẩm quyền
 
@@ -18,16 +18,14 @@ Khi tài liệu mâu thuẫn, dùng thứ tự sau. Mỗi quyết định chỉ 
 
 Bộ tài liệu **chưa implementation-ready hoặc pilot-ready**. PRD Decision Register là danh sách duy nhất của các quyết định mở. Các blocking gate hiện tại:
 
-- `GATE-ACADEMIC-SOURCES` trước content production/review/publication.
-- `GATE-CONTENT-PLAN` trước phê duyệt pilot content.
+- `GATE-ACADEMIC-SOURCES` trước mọi public curriculum/alignment claim dựa trên imported references.
 - `GATE-PUBLIC-WORDING` trước mọi public-facing claim.
 - `GATE-DATA-GOVERNANCE` trước pilot launch.
 - `GATE-PRODUCT-ASSUMPTIONS` trước pilot acceptance testing.
-- `GATE-ASSIGNMENT-POLICY` trước triển khai assignment và weekly-completion metric.
-- `GATE-HISTORICAL-ACCESS` trước triển khai authorization cho historical teacher evidence.
+- `GATE-AI-DRAFT-PROVIDER` trước khi bật AI tạo content draft.
 - `GATE-DEPLOYMENT` trước production launch.
 
-Không artifact nào được tự đóng các gate này. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
+Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN` đã đóng: teacher-facing curriculum/assessment guidance là nguồn tạo/review content và mỗi set được `academic_lead`/`admin` phê duyệt riêng. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
 
 ## Imported references
 
