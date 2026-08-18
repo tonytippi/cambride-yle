@@ -9,6 +9,7 @@ Thumbs.db
 
 # OpenCode local dependencies and logs
 .opencode/
+_bmad/
 
 # Keep BMad deliverables under version control
 !_bmad-output/
