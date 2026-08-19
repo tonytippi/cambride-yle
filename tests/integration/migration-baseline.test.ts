@@ -13,6 +13,11 @@ describe("migration baseline", () => {
     const controlledPolicyMigration = await readFile("db/migrations/0005_curriculum_controlled_policy.sql", "utf8");
     const guidanceReferenceMigration = await readFile("db/migrations/0007_answer_policy_guidance_reference.sql", "utf8");
     const contentMigration = await readFile("db/migrations/0008_content_drafts.sql", "utf8");
+    const reviewMigration = await readFile("db/migrations/0009_content_review_workflow.sql", "utf8");
+    const triggerFixMigration = await readFile("db/migrations/0010_content_review_trigger_fix.sql", "utf8");
+    const integrityMigration = await readFile("db/migrations/0011_content_review_integrity.sql", "utf8");
+    const rejectionGuardMigration = await readFile("db/migrations/0012_content_rejection_approval_guard.sql", "utf8");
+    const approvalEvidenceMigration = await readFile("db/migrations/0013_content_approval_evidence_guard.sql", "utf8");
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -49,6 +54,26 @@ describe("migration baseline", () => {
     expect(contentMigration).toContain('"source_version_id" uuid REFERENCES "question_drafts"("id")');
     expect(contentMigration).toContain('"source_version_id" uuid REFERENCES "media_drafts"("id")');
     expect(contentMigration).toContain("content_audit_events_immutable");
+    expect(journal).toContain("0009_content_review_workflow");
+    expect(reviewMigration).toContain("ALTER TYPE \"content_status\" ADD VALUE IF NOT EXISTS 'in_review'");
+    expect(reviewMigration).toContain('CREATE TABLE "content_validation_results"');
+    expect(reviewMigration).toContain('CREATE TABLE "content_review_records"');
+    expect(reviewMigration).toContain('CREATE TABLE "content_phone_preview_records"');
+    expect(reviewMigration).toContain("CONTENT_DRAFT_HISTORY_IMMUTABLE");
+    expect(journal).toContain("0010_content_review_trigger_fix");
+    expect(triggerFixMigration).toContain("CONTENT_REVIEW_HISTORY_IMMUTABLE");
+    expect(journal).toContain("0011_content_review_integrity");
+    expect(integrityMigration).toContain('ADD COLUMN "validation_result_id" uuid REFERENCES "content_validation_results"');
+    expect(integrityMigration).toContain("CONTENT_STATUS_TRANSITION_INVALID");
+    expect(integrityMigration).toContain("CONTENT_REVIEW_VALIDATION_MISMATCH");
+    expect(integrityMigration).toContain("CONTENT_PHONE_PREVIEW_TARGET_INVALID");
+    expect(journal).toContain("0012_content_rejection_approval_guard");
+    expect(rejectionGuardMigration).toContain("CONTENT_STATUS_TRANSITION_INVALID");
+    expect(rejectionGuardMigration).toContain("CONTENT_REVIEW_VALIDATION_REQUIRED");
+    expect(journal).toContain("0013_content_approval_evidence_guard");
+    expect(approvalEvidenceMigration).toContain("CONTENT_REVIEW_EVIDENCE_REQUIRED");
+    expect(approvalEvidenceMigration).toContain("CONTENT_APPROVAL_EVIDENCE_REQUIRED");
+    expect(approvalEvidenceMigration).toContain("CONTENT_PHONE_PREVIEW_REQUIRED");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
@@ -60,6 +85,29 @@ describe("migration baseline", () => {
         const suffix = crypto.randomUUID();
         await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${crypto.randomUUID()}, ${`Case-${suffix}@example.test`}, ${`case-${suffix}@example.test`}, 'Case', 'learner')`;
         await expect(transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${crypto.randomUUID()}, ${`case-${suffix}@example.test`}, ${`case-${suffix}@example.test`}, 'Duplicate', 'learner')`).rejects.toThrow();
+        throw new Error("ROLLBACK_TEST_TRANSACTION");
+      }).catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "ROLLBACK_TEST_TRANSACTION") throw error; });
+    } finally { await sql.end(); }
+  });
+
+  it("enforces lifecycle evidence for direct migrated content status updates", async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+    try {
+      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('curriculum_targets', 'curriculum_guidance', 'media_drafts', 'content_validation_results', 'content_review_records')`;
+      if (tables.length !== 5) return;
+      await sql.begin(async (transaction) => {
+        const suffix = crypto.randomUUID(); const accountId = crypto.randomUUID(); const targetId = crypto.randomUUID(); const guidanceId = crypto.randomUUID(); const mediaId = crypto.randomUUID(); const validationId = crypto.randomUUID(); const reviewId = crypto.randomUUID(); const approvalId = crypto.randomUUID();
+        await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${accountId}, ${`review-${suffix}@example.test`}, ${`review-${suffix}@example.test`}, 'Reviewer', 'academic_lead')`;
+        await transaction`INSERT INTO curriculum_targets (id, canonical_id, category, guidance, is_approved, created_by) VALUES (${targetId}, ${`target-${suffix}`}, 'vocabulary', 'Controlled target', true, ${accountId})`;
+        await transaction`INSERT INTO curriculum_guidance (id, paper, part, engine, topic, task_format, max_words, max_options, approved_names, approved_numbers) VALUES (${guidanceId}, 'reading_writing', 1, 'picture_true_false', 'Animals', 'Picture true false', 10, 2, '[]'::jsonb, '[]'::jsonb)`;
+        await transaction`INSERT INTO media_drafts (id, status, origin, paper, part, engine, primary_target_id, supporting_target_ids, topic_ids, guidance_id, estimated_duration_seconds, accessibility_metadata, provenance, created_by, media_type, description) VALUES (${mediaId}, 'draft', 'manual', 'reading_writing', '1', 'picture_true_false', ${targetId}, '[]'::jsonb, ${JSON.stringify([targetId])}::jsonb, ${guidanceId}, '60', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb, ${accountId}, 'audio', 'Cat audio')`;
+        await expect(transaction`UPDATE media_drafts SET status = 'in_review' WHERE id = ${mediaId}`).rejects.toThrow(/CONTENT_REVIEW_EVIDENCE_REQUIRED/);
+        await transaction`INSERT INTO content_validation_results (id, kind, target_id, actor_id, findings) VALUES (${validationId}, 'media', ${mediaId}, ${accountId}, '[]'::jsonb)`;
+        await transaction`INSERT INTO content_review_records (id, kind, target_id, actor_id, decision, validation_result_id, findings) VALUES (${reviewId}, 'media', ${mediaId}, ${accountId}, 'submitted', ${validationId}, '[]'::jsonb)`;
+        await transaction`UPDATE media_drafts SET status = 'in_review' WHERE id = ${mediaId}`;
+        await expect(transaction`UPDATE media_drafts SET status = 'approved' WHERE id = ${mediaId}`).rejects.toThrow(/CONTENT_APPROVAL_EVIDENCE_REQUIRED/);
+        await transaction`INSERT INTO content_review_records (id, kind, target_id, actor_id, decision, validation_result_id, findings) VALUES (${approvalId}, 'media', ${mediaId}, ${accountId}, 'approved', ${validationId}, '[]'::jsonb)`;
+        await transaction`UPDATE media_drafts SET status = 'approved' WHERE id = ${mediaId}`;
         throw new Error("ROLLBACK_TEST_TRANSACTION");
       }).catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "ROLLBACK_TEST_TRANSACTION") throw error; });
     } finally { await sql.end(); }

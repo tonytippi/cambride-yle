@@ -1,12 +1,13 @@
-import { check, index, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { accounts } from "./identity";
 import { answerPolicyVersions, curriculumEngine, curriculumGuidance, curriculumLevel, curriculumPaper, curriculumTargets } from "./curriculum";
 
-export const contentStatus = pgEnum("content_status", ["draft"]);
+export const contentStatus = pgEnum("content_status", ["draft", "in_review", "approved"]);
 export const contentOrigin = pgEnum("content_origin", ["manual", "generated"]);
 export const contentKind = pgEnum("content_kind", ["question", "media"]);
 export const contentGatewayKind = pgEnum("content_gateway_kind", ["text", "image"]);
+export const contentReviewDecision = pgEnum("content_review_decision", ["submitted", "approved", "rejected", "exception"]);
 
 const contentFields = {
   id: uuid("id").primaryKey(),
@@ -72,3 +73,21 @@ export const contentGenerationRecords = pgTable("content_generation_records", {
   outputHash: text("output_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique("content_generation_records_target_unique").on(table.targetId)]);
+
+export const contentValidationResults = pgTable("content_validation_results", {
+  id: uuid("id").primaryKey(), kind: contentKind("kind").notNull(), targetId: uuid("target_id").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => accounts.id), findings: jsonb("findings").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("content_validation_results_target_idx").on(table.targetId)]);
+
+export const contentReviewRecords = pgTable("content_review_records", {
+  id: uuid("id").primaryKey(), kind: contentKind("kind").notNull(), targetId: uuid("target_id").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => accounts.id), decision: contentReviewDecision("decision").notNull(),
+  validationResultId: uuid("validation_result_id").references(() => contentValidationResults.id), reason: text("reason"), findings: jsonb("findings").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("content_review_records_target_idx").on(table.targetId)]);
+
+export const contentPhonePreviewRecords = pgTable("content_phone_preview_records", {
+  id: uuid("id").primaryKey(), targetId: uuid("target_id").notNull(), actorId: uuid("actor_id").notNull().references(() => accounts.id),
+  viewportWidth: integer("viewport_width").notNull(), successful: boolean("successful").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [check("content_phone_preview_width_check", sql`${table.viewportWidth} = 375`), check("content_phone_preview_success_check", sql`${table.successful} = true`), index("content_phone_preview_target_idx").on(table.targetId)]);
