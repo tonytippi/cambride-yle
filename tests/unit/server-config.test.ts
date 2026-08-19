@@ -15,4 +15,10 @@ describe("server configuration", () => {
     expect(() => parseServerConfig({ ...valid, DATABASE_URL: "secret-value" })).toThrow("DATABASE_URL");
     expect(() => parseServerConfig({ ...valid, DATABASE_URL: "secret-value" })).not.toThrow("secret-value");
   });
+  it("keeps AI credentials optional while the provider gate is open", () => {
+    const config = parseServerConfig(valid);
+    expect(config.AI_DRAFT_PROVIDER_GATE_CLOSED).toBe(false);
+    expect(config.AI_TEXT_API_KEY).toBeUndefined();
+    expect(config).not.toHaveProperty("NEXT_PUBLIC_AI_TEXT_API_KEY");
+  });
 });
