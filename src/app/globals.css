@@ -1,0 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Nunito+Sans:wght@800&display=swap");
+
+:root { --surface-base:#F7FAF7; --surface-raised:#FFFFFF; --surface-soft:#EAF4EF; --ink-primary:#19332B; --ink-secondary:#52655E; --primary:#176B4D; --focus:#8A5200; --border:#CFE0D7; --radius-md:12px; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--surface-base); color:var(--ink-primary); font:400 18px/1.5 "Atkinson Hyperlegible", system-ui, sans-serif; }
+button { min-height:48px; padding:12px 20px; border:0; border-radius:var(--radius-md); background:var(--primary); color:#fff; font:700 16px/1.35 "Atkinson Hyperlegible", system-ui, sans-serif; cursor:pointer; }
+button.secondary { background:var(--surface-soft); color:var(--ink-primary); border:1px solid var(--border); }
+:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+.shell { min-height:100vh; padding:32px 16px; display:grid; place-items:center; }
+.welcome { width:min(100%, 640px); padding:32px; border:1px solid var(--border); border-radius:18px; background:var(--surface-raised); }
+.eyebrow { margin:0; color:var(--ink-secondary); font-size:16px; font-weight:700; }
+h1 { margin:8px 0 16px; font:800 28px/1.2 "Nunito Sans", system-ui, sans-serif; }
+.welcome p:not(.eyebrow) { margin:0 0 24px; }
+.sign-in-form { display:grid; gap:16px; }
+.sign-in-form label { display:grid; gap:6px; font-weight:700; }
+.sign-in-form input, .sign-in-form select, .sign-in-form textarea { min-height:48px; border:1px solid var(--border); border-radius:8px; padding:10px; background:#fff; color:var(--ink-primary); font:inherit; }.sign-in-form textarea { min-height:100px; resize:vertical; }
+.google-button { min-height:48px; display:grid; place-items:center; border:1px solid var(--primary); border-radius:var(--radius-md); color:var(--primary); font-weight:700; text-decoration:none; }
+.divider { text-align:center; color:var(--ink-secondary); }
+.error { color:#9B1C1C; font-weight:700; }.notice { padding:12px; border-left:4px solid var(--primary); background:var(--surface-soft); }.home-heading { display:flex; justify-content:space-between; gap:16px; align-items:start; }.home-heading h1 { margin-bottom:0; } h2 { font:800 22px/1.2 "Nunito Sans", system-ui, sans-serif; margin:32px 0 16px; } h3 { margin:0; font:700 20px/1.2 "Nunito Sans", system-ui, sans-serif; }.account-list { display:grid; gap:12px; }.account-card { padding:16px; border:1px solid var(--border); border-radius:var(--radius-md); }.account-card p { margin:8px 0; overflow-wrap:anywhere; }.account-link { display:inline-block; min-height:48px; padding:11px 0; color:var(--primary); font-weight:700; }.danger { background:#9B1C1C; }.danger-dialog { width:min(100% - 32px, 540px); border:1px solid var(--border); border-radius:18px; padding:24px; color:var(--ink-primary); }.danger-dialog::backdrop { background:rgb(25 51 43 / 55%); }.danger-dialog h2 { margin-top:0; }.dialog-actions { display:flex; flex-wrap:wrap; gap:12px; }.audit-history { padding-left:28px; }.audit-history li { margin:8px 0; }
+ .catalogue { width:min(100%, 1080px); }.catalogue-grid { display:grid; gap:24px; }.catalogue-grid > form { padding:20px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface-soft); }.catalogue-grid h2 { margin-top:0; } fieldset { display:grid; gap:12px; border:1px solid var(--border); border-radius:8px; } h4 { margin:16px 0 4px; } @media (min-width: 768px) { .shell { padding-inline:32px; }.catalogue-grid { grid-template-columns:1fr 1fr; } }

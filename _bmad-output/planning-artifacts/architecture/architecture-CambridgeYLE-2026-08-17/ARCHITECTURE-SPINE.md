@@ -141,10 +141,10 @@ flowchart LR
 | Name | Version |
 | --- | --- |
 | Node.js LTS | 24.19.0 |
-| TypeScript | 7.0.2 |
+| TypeScript | 5.9.3 |
 | Next.js App Router | 16.3.1 |
 | React and React DOM | 19.2.8 |
-| Tailwind CSS | 4.3.3 |
+| Tailwind CSS | 3.4.17 |
 | PostgreSQL | 18.6 |
 | Drizzle ORM | 0.45.2 |
 | Drizzle Kit | 0.31.10 |
@@ -154,6 +154,8 @@ flowchart LR
 | Serwist | 9.5.12 |
 | Vitest | 4.1.10 |
 | Playwright | 1.62.1 |
+
+TypeScript 5.9.3 and Tailwind CSS 3.4.17 are the supported P0 baseline. Upgrade either only through a reviewed compatibility change that updates required configuration and proves `lint`, `typecheck`, unit/integration tests, production build, and browser tests. TypeScript 7.0.2 remains deferred because the selected Next.js ESLint toolchain does not support it.
 
 ## Structural Seed
 

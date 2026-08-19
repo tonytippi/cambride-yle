@@ -1,0 +1,433 @@
+"use client";
+import { useActionState } from "react";
+import type { CurriculumActionState } from "@/app/academic-lead/actions";
+/* eslint-disable no-unused-vars */
+type Action = (
+  state: CurriculumActionState,
+  data: FormData,
+) => Promise<CurriculumActionState>;
+/* eslint-enable no-unused-vars */
+function Status({ state }: { state: CurriculumActionState }) {
+  return (
+    <>
+      {state.error && (
+        <div role="alert" className="error">
+          <strong>{state.error.code}:</strong> {state.error.message}
+          {state.error.findings?.map((finding) => (
+            <p key={`${finding.field}-${finding.code}`}>
+              {finding.field}: {finding.code}
+            </p>
+          ))}
+        </div>
+      )}
+      {state.success && (
+        <p role="status" className="notice">
+          {state.success}
+        </p>
+      )}
+    </>
+  );
+}
+export function TargetForm({ action }: { action: Action }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="sign-in-form">
+      <h2>Add controlled target</h2>
+      <label>
+        Canonical identifier
+        <input
+          name="canonicalId"
+          required
+          pattern="[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*"
+        />
+      </label>
+      <TargetFields />
+      <Status state={state} />
+      <button disabled={pending}>
+        {pending ? "Saving target..." : "Save target"}
+      </button>
+    </form>
+  );
+}
+function TargetFields({
+  target,
+}: {
+  target?: { category: string; guidance: string; isApproved: boolean };
+}) {
+  return (
+    <>
+      <label>
+        Category
+        <select name="category" defaultValue={target?.category ?? "vocabulary"}>
+          <option value="vocabulary">Vocabulary</option>
+          <option value="grammar">Grammar</option>
+          <option value="topic">Topic</option>
+          <option value="language_target">Language target</option>
+        </select>
+      </label>
+      <label>
+        Internal guidance
+        <textarea name="guidance" defaultValue={target?.guidance} required />
+      </label>
+      <label>
+        <input
+          name="isApproved"
+          type="checkbox"
+          defaultChecked={target?.isApproved}
+        />{" "}
+        Approved for controlled use
+      </label>
+    </>
+  );
+}
+export function TargetEditForm({
+  action,
+  target,
+}: {
+  action: Action;
+  target: {
+    id: string;
+    category: string;
+    guidance: string;
+    isApproved: boolean;
+  };
+}) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="sign-in-form edit-form">
+      <h4>Edit target</h4>
+      <input type="hidden" name="targetId" value={target.id} />
+      <TargetFields target={target} />
+      <Status state={state} />
+      <button disabled={pending}>
+        {pending ? "Updating target..." : "Update target"}
+      </button>
+    </form>
+  );
+}
+export function GuidanceForm({ action }: { action: Action }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="sign-in-form">
+      <h2>Add internal task guidance</h2>
+      <label>
+        Paper
+        <select name="paper">
+          <option value="listening">Listening</option>
+          <option value="reading_writing">Reading and Writing</option>
+        </select>
+      </label>
+      <label>
+        Part
+        <input
+          name="part"
+          type="number"
+          min="1"
+          max="5"
+          defaultValue="1"
+          required
+        />
+      </label>
+      <EngineFields />
+      <label>
+        Topic
+        <input name="topic" required />
+      </label>
+      <label>
+        Task format
+        <input name="taskFormat" required />
+      </label>
+      <label>
+        Maximum words
+        <input
+          name="maxWords"
+          type="number"
+          min="1"
+          max="20"
+          defaultValue="1"
+          required
+        />
+      </label>
+      <label>
+        Maximum options
+        <input
+          name="maxOptions"
+          type="number"
+          min="1"
+          max="10"
+          defaultValue="2"
+          required
+        />
+      </label>
+      <label>
+        Approved names, separated by commas
+        <input name="approvedNames" />
+      </label>
+      <label>
+        Approved numbers, separated by commas (0-20)
+        <input name="approvedNumbers" />
+      </label>
+      <Status state={state} />
+      <button disabled={pending}>
+        {pending ? "Saving guidance..." : "Save guidance"}
+      </button>
+    </form>
+  );
+}
+export function GuidanceEditForm({
+  action,
+  guidance,
+}: {
+  action: Action;
+  guidance: {
+    id: string;
+    paper: "listening" | "reading_writing";
+    part: number;
+    engine: string;
+    topic: string;
+    taskFormat: string;
+    maxWords: number;
+    maxOptions: number;
+    approvedNames: string[];
+    approvedNumbers: number[];
+  };
+}) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="sign-in-form edit-form">
+      <h4>Edit guidance</h4>
+      <input type="hidden" name="guidanceId" value={guidance.id} />
+      <label>
+        Paper
+        <select name="paper" defaultValue={guidance.paper}>
+          <option value="listening">Listening</option>
+          <option value="reading_writing">Reading and Writing</option>
+        </select>
+      </label>
+      <label>
+        Part
+        <input
+          name="part"
+          type="number"
+          min="1"
+          max="5"
+          defaultValue={guidance.part}
+          required
+        />
+      </label>
+      <label>
+        P0 engine
+        <select name="engine" defaultValue={guidance.engine}>
+          {[
+            "picture_true_false",
+            "picture_yes_no",
+            "audio_picture_choice",
+            "audio_note_taking",
+            "word_bank_cloze",
+          ].map((engine) => (
+            <option key={engine} value={engine}>
+              {engine}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Topic
+        <input name="topic" defaultValue={guidance.topic} required />
+      </label>
+      <label>
+        Task format
+        <input name="taskFormat" defaultValue={guidance.taskFormat} required />
+      </label>
+      <label>
+        Maximum words
+        <input
+          name="maxWords"
+          type="number"
+          min="1"
+          max="20"
+          defaultValue={guidance.maxWords}
+          required
+        />
+      </label>
+      <label>
+        Maximum options
+        <input
+          name="maxOptions"
+          type="number"
+          min="1"
+          max="10"
+          defaultValue={guidance.maxOptions}
+          required
+        />
+      </label>
+      <label>
+        Approved names, separated by commas
+        <input
+          name="approvedNames"
+          defaultValue={guidance.approvedNames.join(", ")}
+        />
+      </label>
+      <label>
+        Approved numbers, separated by commas
+        <input
+          name="approvedNumbers"
+          defaultValue={guidance.approvedNumbers.join(", ")}
+        />
+      </label>
+      <Status state={state} />
+      <button disabled={pending}>
+        {pending ? "Updating guidance..." : "Update guidance"}
+      </button>
+    </form>
+  );
+}
+function EngineFields() {
+  return (
+    <label>
+      P0 engine
+      <select name="engine" defaultValue="picture_true_false">
+        <option value="picture_true_false">Picture true/false</option>
+        <option value="picture_yes_no">Picture yes/no</option>
+        <option value="audio_picture_choice">Audio picture choice</option>
+        <option value="audio_note_taking">Audio note taking</option>
+        <option value="word_bank_cloze">Word bank cloze</option>
+      </select>
+    </label>
+  );
+}
+export function PolicyForm({
+  action,
+  targets,
+  policies,
+  guidance,
+}: {
+  action: Action;
+  targets: { id: string; canonicalId: string }[];
+  policies: { id: string; canonicalId: string }[];
+  guidance: {
+    id: string;
+    paper: string;
+    part: number;
+    engine: string;
+    topic: string;
+    taskFormat: string;
+  }[];
+}) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="sign-in-form">
+      <h2>Add answer policy version</h2>
+      <label>
+        Existing policy to version (optional)
+        <select name="policyId" defaultValue="">
+          <option value="">Create a new policy</option>
+          {policies.map((policy) => (
+            <option key={policy.id} value={policy.id}>
+              {policy.canonicalId}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Canonical policy identifier for a new policy
+        <input name="canonicalId" />
+      </label>
+      <label>
+        Curriculum target
+        <select name="targetId" required>
+          <option value="">Choose a target</option>
+          {targets.map((target) => (
+            <option key={target.id} value={target.id}>
+              {target.canonicalId}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Controlled task guidance
+        <select name="guidanceId" required>
+          <option value="">Choose guidance</option>
+          {guidance.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.paper.replace("_", " ")} Part {item.part}: {item.topic},{" "}
+              {item.taskFormat}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Paper
+        <select name="paper">
+          <option value="listening">Listening</option>
+          <option value="reading_writing">Reading and Writing</option>
+        </select>
+      </label>
+      <label>
+        Part
+        <input
+          name="part"
+          type="number"
+          min="1"
+          max="5"
+          defaultValue="1"
+          required
+        />
+      </label>
+      <EngineFields />
+      <label>
+        Input kind
+        <select name="inputKind" defaultValue="boolean">
+          <option value="boolean">Boolean</option>
+          <option value="yes_no">Yes/no</option>
+          <option value="choice">Choice</option>
+          <option value="number">Number</option>
+          <option value="name">Name</option>
+          <option value="word">Word</option>
+        </select>
+      </label>
+      <label>
+        Canonical answer
+        <input name="canonicalAnswer" required />
+      </label>
+      <label>
+        Accepted answers, one per line
+        <textarea name="acceptedAnswers" />
+      </label>
+      <label>
+        Maximum words
+        <input
+          name="maxWords"
+          type="number"
+          min="1"
+          max="20"
+          defaultValue="1"
+          required
+        />
+      </label>
+      <label>
+        <input name="teacherReviewIfUncertain" type="checkbox" /> Send malformed
+        or uncertain values for teacher review
+      </label>
+      <fieldset>
+        <legend>Conformance vectors</legend>
+        <label>
+          Expected correct response
+          <input name="vector-correct" required />
+        </label>
+        <label>
+          Expected incorrect response
+          <input name="vector-incorrect" required />
+        </label>
+        <label>
+          Expected teacher-review response
+          <input name="vector-needs_teacher_review" />
+        </label>
+      </fieldset>
+      <Status state={state} />
+      <button disabled={pending}>
+        {pending ? "Saving policy..." : "Save immutable policy version"}
+      </button>
+    </form>
+  );
+}
