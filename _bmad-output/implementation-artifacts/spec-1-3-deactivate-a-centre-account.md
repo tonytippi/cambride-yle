@@ -109,3 +109,11 @@ Guard admin cuối ở database transaction boundary, không phải qua count t�
 
 - Covers local sign-in denial when deactivation wins the session-creation race.
   [`identity-behaviour.test.ts:74`](../../tests/integration/identity-behaviour.test.ts#L74)
+
+### Review Findings
+
+- [x] [Review][Patch] Session creation can commit after deactivation's revoke-all update [src/features/identity/infrastructure/repositories.ts:18]
+- [x] [Review][Patch] Lock ordering can deadlock concurrent active-admin deactivations instead of returning a stable result [src/features/identity/infrastructure/repositories.ts:55]
+- [x] [Review][Patch] Google admin promotion can reactivate an account concurrently deactivated [src/features/identity/infrastructure/repositories.ts:69]
+- [x] [Review][Patch] Deactivation dialog closes without persistent success feedback or focus restoration [src/features/identity/ui/deactivate-account-form.tsx:16]
+- [x] [Review][Patch] No database-backed concurrency coverage verifies session revocation and final-admin behaviour [tests/unit/deactivate-centre-account.test.ts:26] — added SQL lock-protocol regression coverage; a live PostgreSQL concurrency fixture remains unavailable in the current suite.

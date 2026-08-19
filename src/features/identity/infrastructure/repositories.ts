@@ -22,7 +22,7 @@ export async function createSession(accountId: string, db: Database = database) 
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
   const inserted = await db.execute<{ id: string }>(sql`INSERT INTO sessions (id, account_id, verifier_hash, expires_at)
     SELECT ${id}, ${accountId}, ${verifierHash}, ${expiresAt}
-    FROM accounts WHERE id = ${accountId} AND status = 'active'
+    FROM accounts WHERE id = ${accountId} AND status = 'active' FOR UPDATE
     RETURNING id`);
   if (!inserted[0]) throw new Error("ACCOUNT_NOT_ACTIVE");
   return token;
@@ -52,12 +52,12 @@ export async function getCentreAccountDetail(id: string, db: Database = database
   return { account, history };
 }
 export async function deactivateAccount(accountId: string, actorId: string, confirmation: string, db: Database) {
+  // Lock every active admin before deciding so concurrent admin removals cannot remove them all.
+  const activeAdmins = await db.execute<{ id: string }>(sql`SELECT id FROM accounts WHERE role = 'admin' AND status = 'active' ORDER BY id FOR UPDATE`);
   const lockedTargets = await db.execute<{ id: string; email: string; role: Role; status: "active" | "deactivated" }>(sql`SELECT id, email, role, status FROM accounts WHERE id = ${accountId} FOR UPDATE`);
   const target = lockedTargets[0];
   if (!target || target.status !== "active") throw new Error("ACCOUNT_NOT_ACTIVE");
   if (confirmation !== target.email) throw new Error("CONFIRMATION_MISMATCH");
-  // Lock every active admin before deciding so concurrent admin removals cannot remove them all.
-  const activeAdmins = await db.execute<{ id: string }>(sql`SELECT id FROM accounts WHERE role = 'admin' AND status = 'active' FOR UPDATE`);
   if (target.role === "admin" && activeAdmins.length === 1 && activeAdmins[0]?.id === accountId) throw new Error("LAST_ACTIVE_ADMIN");
   const deactivatedAt = new Date();
   await db.update(accounts).set({ status: "deactivated", deactivatedAt, deactivatedBy: actorId, updatedAt: deactivatedAt }).where(eq(accounts.id, accountId));
@@ -66,6 +66,10 @@ export async function deactivateAccount(accountId: string, actorId: string, conf
 }
 export async function getGoogleIdentity(subject: string, db: Database = database) { return (await db.select().from(oidcIdentities).where(and(eq(oidcIdentities.provider, "google"), eq(oidcIdentities.subject, subject))).limit(1))[0]; }
 export async function linkGoogleIdentity(subject: string, accountId: string, db: Database = database) { await db.insert(oidcIdentities).values({ provider: "google", subject, accountId }); await db.insert(auditEvents).values({ id: uuidv7(), action: "OIDC_IDENTITY_LINKED", targetId: accountId }); }
-export async function promoteGoogleAdmin(accountId: string, db: Database = database) { await db.update(accounts).set({ role: "admin", status: "active", updatedAt: new Date() }).where(eq(accounts.id, accountId)); await db.insert(auditEvents).values({ id: uuidv7(), action: "ACCOUNT_PROMOTED_GOOGLE_ADMIN", targetId: accountId }); }
+export async function promoteGoogleAdmin(accountId: string, db: Database = database) {
+  const promoted = await db.update(accounts).set({ role: "admin", updatedAt: new Date() }).where(and(eq(accounts.id, accountId), eq(accounts.status, "active"))).returning({ id: accounts.id });
+  if (!promoted[0]) throw new Error("ACCOUNT_NOT_ACTIVE");
+  await db.insert(auditEvents).values({ id: uuidv7(), action: "ACCOUNT_PROMOTED_GOOGLE_ADMIN", targetId: accountId });
+}
 export async function auditOidcProvisioning(accountId: string, db: Database = database) { await db.insert(auditEvents).values({ id: uuidv7(), action: "OIDC_ACCOUNT_PROVISIONED", targetId: accountId }); }
 export { toActor };

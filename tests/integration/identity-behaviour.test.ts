@@ -122,6 +122,13 @@ describe("identity I/O matrix without external services", () => {
     expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled(); expect(dependencies.repository.createSession).not.toHaveBeenCalled();
   });
 
+  it("does not complete Google sign-in when promotion loses a deactivation race", async () => {
+    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "active" }); dependencies.repository.promoteGoogleAdmin.mockRejectedValue(new Error("ACCOUNT_NOT_ACTIVE"));
+    const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    await expect(realSignInWithGoogle({ subject: "admin-race", email: "learner@example.test", displayName: "Learner" }, ["learner@example.test"])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
+    expect(dependencies.repository.createSession).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid state, invalid token, and unverified identities without provisioning", async () => {
     const invalidState = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=missing&code=code")); expect(invalidState.headers.get("location")).toContain("/sign-in?error=google");
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockRejectedValue(new Error("unverified"));

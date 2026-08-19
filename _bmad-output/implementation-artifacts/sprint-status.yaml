@@ -39,7 +39,7 @@ development_status:
   epic-1: in-progress
   1-1-establish-the-application-foundation: done
   1-2-admin-created-accounts-and-secure-sign-in: done
-  1-3-deactivate-a-centre-account: review
+  1-3-deactivate-a-centre-account: done
   epic-1-retrospective: optional
 
   epic-2: backlog
