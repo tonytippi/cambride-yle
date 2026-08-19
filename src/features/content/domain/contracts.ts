@@ -11,13 +11,14 @@ const plainText = (max: number) => z.string().transform(normalisePlainText).pipe
 const plainTextOption = plainText(500);
 const metadata = z.object({ altText: plainText(500) }).strict();
 const provenance = z.object({ source: plainText(500), rightsReference: plainText(500) }).strict();
+const postSubmitHint = z.object({ locale: z.literal("en-GB"), message: plainText(500) }).strict();
 const previewUrl = z.string().refine((value) => { try { const url = new URL(value); return url.protocol === "https:" && !url.search && !url.hash; } catch { return false; } }, "must be an HTTPS URL without query or fragment");
 const base = z.object({
   paper: z.enum(["listening", "reading_writing"]), part: z.number().int().min(1).max(5), engine: z.enum(engines),
   primaryTargetId: id, supportingTargetIds: z.array(id), topicIds: z.array(id), guidanceId: id,
   estimatedDurationSeconds: z.number().int().positive(), accessibilityMetadata: metadata, provenance,
 });
-export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10) }).strict();
+export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10), postSubmitHint: postSubmitHint.optional() }).strict();
 export const mediaDraftSchema = base.extend({ mediaType: z.enum(["image", "audio"]), previewUrl: previewUrl.optional(), description: plainText(2000) }).strict();
 const imageMediaDraftSchema = mediaDraftSchema.extend({ mediaType: z.literal("image") });
 const permittedReferenceSchema = z.object({ id: z.string().min(1).max(100), description: z.string().min(1).max(500) }).strict();
@@ -41,4 +42,10 @@ export const contentKindSchema = z.enum(["question", "media"]);
 export const workflowInputSchema = z.object({ kind: contentKindSchema, targetId: id }).strict();
 export const reasonInputSchema = workflowInputSchema.extend({ reason: plainText(2000) }).strict();
 export const phonePreviewInputSchema = workflowInputSchema.extend({ viewportWidth: z.literal(375), successful: z.literal(true) }).strict();
+export const composePracticeSetSchema = z.object({
+  questionIds: z.array(id).min(1).max(20),
+  mediaByQuestion: z.array(z.object({ questionId: id, mediaIds: z.array(id).max(20) }).strict()).max(20),
+}).strict();
+export const practiceSetWorkflowSchema = z.object({ practiceSetId: id }).strict();
 export type WorkflowInput = z.infer<typeof workflowInputSchema>;
+export type ComposePracticeSetInput = z.infer<typeof composePracticeSetSchema>;

@@ -2,7 +2,7 @@ ALTER TABLE "answer_policies" ADD COLUMN "guidance_id" uuid REFERENCES "curricul
 
 UPDATE "answer_policies" AS policy
 SET "guidance_id" = (
-  SELECT min(guidance."id")
+  SELECT min(guidance."id"::text)::uuid
   FROM "curriculum_guidance" AS guidance
   WHERE guidance."paper" = policy."paper"
     AND guidance."part" = policy."part"
