@@ -12,8 +12,9 @@ const base = z.object({
 });
 export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: z.string().min(1).max(2000), options: z.array(z.string().min(1).max(500)).min(1).max(10) }).strict();
 export const mediaDraftSchema = base.extend({ mediaType: z.enum(["image", "audio"]), previewUrl: previewUrl.optional(), description: z.string().min(1).max(2000) }).strict();
+const imageMediaDraftSchema = mediaDraftSchema.extend({ mediaType: z.literal("image") });
 const permittedReferenceSchema = z.object({ id: z.string().min(1).max(100), description: z.string().min(1).max(500) }).strict();
-export const generationRequestSchema = z.discriminatedUnion("kind", [z.object({ kind: z.literal("text"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: questionDraftSchema }).strict(), z.object({ kind: z.literal("image"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: mediaDraftSchema }).strict()]);
+export const generationRequestSchema = z.discriminatedUnion("kind", [z.object({ kind: z.literal("text"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: questionDraftSchema }).strict(), z.object({ kind: z.literal("image"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: imageMediaDraftSchema }).strict()]);
 export const generatedQuestionOutputSchema = z.object({ prompt: z.string().min(1).max(2000), options: z.array(z.string().min(1).max(500)).min(1).max(10) }).strict();
 export const generatedMediaOutputSchema = z.object({ description: z.string().min(1).max(2000), previewUrl: previewUrl.optional() }).strict();
 export type QuestionDraftInput = z.infer<typeof questionDraftSchema>;
