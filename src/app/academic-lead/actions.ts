@@ -10,6 +10,7 @@ import {
 } from "@/features/curriculum/application/curriculum";
 import { currentActor } from "@/features/identity/ui/session";
 import type { AnswerValue } from "@/features/curriculum/domain/contracts";
+import { createManualMedia, createManualQuestion, requestAiDraft } from "@/features/content/application/content";
 export type CurriculumActionState = {
   error?: {
     code: string;
@@ -18,6 +19,7 @@ export type CurriculumActionState = {
   };
   success?: string;
 };
+export type ContentActionState = CurriculumActionState;
 const failure = (error: unknown, fallback: string): CurriculumActionState =>
   error instanceof CurriculumError ||
   (error instanceof Error && "code" in error)
@@ -25,8 +27,8 @@ const failure = (error: unknown, fallback: string): CurriculumActionState =>
         error: {
           code: (error as CurriculumError).code,
           message: error.message,
-          ...(error instanceof CurriculumError && error.findings.length
-            ? { findings: error.findings }
+          ...(error instanceof Error && "findings" in error && Array.isArray((error as { findings?: unknown }).findings) && (error as { findings: unknown[] }).findings.length
+            ? { findings: (error as { findings: { field: string; code: string; message: string }[] }).findings }
             : {}),
         },
       }
@@ -230,3 +232,14 @@ export async function createPolicyAction(
     return failure(error, "POLICY_SAVE_FAILED");
   }
 }
+export async function createQuestionDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> {
+  try {
+    await createManualQuestion(await actorFor(), {
+      ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((option) => option.trim()).filter(Boolean),
+    });
+    revalidatePath("/academic-lead"); return { success: "Question draft saved for academic review." };
+  } catch (error) { return failure(error, "CONTENT_DRAFT_SAVE_FAILED"); }
+}
+const contentBase = (formData: FormData) => ({ paper: String(formData.get("paper")) as "listening", part: Number(formData.get("part")), engine: String(formData.get("engine")) as "picture_true_false", primaryTargetId: String(formData.get("primaryTargetId")), supportingTargetIds: String(formData.get("supportingTargetIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean), topicIds: [String(formData.get("topicId"))], guidanceId: String(formData.get("guidanceId")), estimatedDurationSeconds: Number(formData.get("estimatedDurationSeconds")), accessibilityMetadata: { altText: String(formData.get("altText")) }, provenance: { source: String(formData.get("source")), rightsReference: String(formData.get("rightsReference")) } });
+export async function createMediaDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await createManualMedia(await actorFor(), { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }); revalidatePath("/academic-lead"); return { success: "Media draft saved for academic review." }; } catch (error) { return failure(error, "MEDIA_DRAFT_SAVE_FAILED"); } }
+export async function requestAiDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const draft = formData.get("draftType") === "question" ? { ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((value) => value.trim()).filter(Boolean) } : { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const permittedReferences = String(formData.get("permittedReferences") ?? "").split("\n").map((line) => line.trim()).filter(Boolean).map((line) => { const [id, ...description] = line.split("|"); return { id: id!.trim(), description: description.join("|").trim() }; }); const sourceId = String(formData.get("sourceId") || "") || undefined; await requestAiDraft(await actorFor(), { kind: String(formData.get("kind")) as "text", staffPrompt: String(formData.get("staffPrompt")), permittedReferences, draft } as never, sourceId); revalidatePath("/academic-lead"); return { success: sourceId ? "AI draft rerun saved for academic review." : "Generated draft saved for academic review." }; } catch (error) { return failure(error, "AI_DRAFT_REQUEST_FAILED"); } }

@@ -27,3 +27,9 @@ test("server responses apply the security header policy", async ({ request }) =>
     "x-frame-options": "DENY"
   });
 });
+
+test("content draft workspace is protected from unauthenticated visitors", async ({ page }) => {
+  await page.goto("/academic-lead");
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page.getByRole("heading", { name: "Sign in to practice" })).toBeVisible();
+});

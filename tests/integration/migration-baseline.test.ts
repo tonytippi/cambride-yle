@@ -12,6 +12,7 @@ describe("migration baseline", () => {
     const hardeningMigration = await readFile("db/migrations/0004_curriculum_policy_hardening.sql", "utf8");
     const controlledPolicyMigration = await readFile("db/migrations/0005_curriculum_controlled_policy.sql", "utf8");
     const guidanceReferenceMigration = await readFile("db/migrations/0007_answer_policy_guidance_reference.sql", "utf8");
+    const contentMigration = await readFile("db/migrations/0008_content_drafts.sql", "utf8");
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -42,6 +43,12 @@ describe("migration baseline", () => {
     expect(guidanceReferenceMigration).toContain("ANSWER_POLICY_GUIDANCE_BACKFILL_AMBIGUOUS_OR_MISSING");
     expect(guidanceReferenceMigration).toContain('WHERE "guidance_id" IS NULL');
     expect(guidanceReferenceMigration.indexOf("ANSWER_POLICY_GUIDANCE_BACKFILL_AMBIGUOUS_OR_MISSING")).toBeLessThan(guidanceReferenceMigration.indexOf('ALTER COLUMN "guidance_id" SET NOT NULL'));
+    expect(journal).toContain("0008_content_drafts");
+    expect(contentMigration).toContain('CREATE TABLE "question_drafts"');
+    expect(contentMigration).toContain("CONTENT_DRAFT_HISTORY_IMMUTABLE");
+    expect(contentMigration).toContain('"source_version_id" uuid REFERENCES "question_drafts"("id")');
+    expect(contentMigration).toContain('"source_version_id" uuid REFERENCES "media_drafts"("id")');
+    expect(contentMigration).toContain("content_audit_events_immutable");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
