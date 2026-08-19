@@ -15,6 +15,7 @@ import {
   practiceSetItems,
   practiceSets,
   questionDrafts,
+  questionVersionMedia,
 } from "@/../db/schema";
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
@@ -50,6 +51,15 @@ export async function createQuestion(
     prompt: input.prompt,
     options: input.options,
   });
+  if (input.mediaIds?.length)
+    await db.insert(questionVersionMedia).values(
+      input.mediaIds.map((mediaVersionId, index) => ({
+        id: uuidv7(),
+        questionVersionId: id,
+        mediaVersionId,
+        position: index + 1,
+      })),
+    );
   await audit("QUESTION_DRAFT_CREATED", "question", id, actorId, db);
   return id;
 }
@@ -112,7 +122,55 @@ export async function listDrafts(db: Database = database) {
       .select()
       .from(contentPhonePreviewRecords)
       .orderBy(desc(contentPhonePreviewRecords.createdAt)),
+    associations: await db
+      .select()
+      .from(questionVersionMedia)
+      .orderBy(asc(questionVersionMedia.questionVersionId), asc(questionVersionMedia.position)),
   };
+}
+export async function lockCompatibleMediaForQuestion(
+  input: QuestionDraftInput,
+  db: Database,
+) {
+  const mediaIds = input.mediaIds ?? [];
+  return mediaIds.length
+    ? db
+        .select()
+        .from(mediaDrafts)
+        .where(inArray(mediaDrafts.id, mediaIds))
+        .for("update")
+    : [];
+}
+export async function getQuestionMediaEntries(ids: string[], db: Database) {
+  return ids.length
+    ? db
+        .select({ questionVersionId: questionVersionMedia.questionVersionId, position: questionVersionMedia.position, media: mediaDrafts })
+        .from(questionVersionMedia)
+        .innerJoin(mediaDrafts, eq(questionVersionMedia.mediaVersionId, mediaDrafts.id))
+        .where(inArray(questionVersionMedia.questionVersionId, ids))
+        .orderBy(asc(questionVersionMedia.questionVersionId), asc(questionVersionMedia.position))
+    : [];
+}
+export async function lockQuestionMediaEntries(ids: string[], db: Database) {
+  return ids.length
+    ? db
+        .select({ questionVersionId: questionVersionMedia.questionVersionId, position: questionVersionMedia.position, media: mediaDrafts })
+        .from(questionVersionMedia)
+        .innerJoin(mediaDrafts, eq(questionVersionMedia.mediaVersionId, mediaDrafts.id))
+        .where(inArray(questionVersionMedia.questionVersionId, ids))
+        .orderBy(asc(questionVersionMedia.questionVersionId), asc(questionVersionMedia.position))
+        .for("update")
+    : [];
+}
+export async function getReadinessCandidates(db: Database = database) {
+  return db
+    .select({ question: questionDrafts, media: mediaDrafts, guidance: curriculumGuidance })
+    .from(questionDrafts)
+    .innerJoin(curriculumGuidance, eq(questionDrafts.guidanceId, curriculumGuidance.id))
+    .leftJoin(questionVersionMedia, eq(questionVersionMedia.questionVersionId, questionDrafts.id))
+    .leftJoin(mediaDrafts, eq(questionVersionMedia.mediaVersionId, mediaDrafts.id))
+    .where(eq(questionDrafts.status, "published"))
+    .orderBy(asc(questionDrafts.engine), asc(questionDrafts.paper), asc(questionDrafts.part), asc(questionVersionMedia.position));
 }
 export async function getContent(
   kind: "question" | "media",

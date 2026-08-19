@@ -18,7 +18,7 @@ const base = z.object({
   primaryTargetId: id, supportingTargetIds: z.array(id), topicIds: z.array(id), guidanceId: id,
   estimatedDurationSeconds: z.number().int().positive(), accessibilityMetadata: metadata, provenance,
 });
-export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10), postSubmitHint: postSubmitHint.optional() }).strict();
+export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10), postSubmitHint: postSubmitHint.optional(), mediaIds: z.array(id).max(20).superRefine((ids, context) => { if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "MEDIA_IDS_DUPLICATE" }); }).optional() }).strict();
 export const mediaDraftSchema = base.extend({ mediaType: z.enum(["image", "audio"]), previewUrl: previewUrl.optional(), description: plainText(2000) }).strict();
 const imageMediaDraftSchema = mediaDraftSchema.extend({ mediaType: z.literal("image") });
 const permittedReferenceSchema = z.object({ id: z.string().min(1).max(100), description: z.string().min(1).max(500) }).strict();
@@ -44,7 +44,6 @@ export const reasonInputSchema = workflowInputSchema.extend({ reason: plainText(
 export const phonePreviewInputSchema = workflowInputSchema.extend({ viewportWidth: z.literal(375), successful: z.literal(true) }).strict();
 export const composePracticeSetSchema = z.object({
   questionIds: z.array(id).min(1).max(20),
-  mediaByQuestion: z.array(z.object({ questionId: id, mediaIds: z.array(id).max(20) }).strict()).max(20),
 }).strict();
 export const practiceSetWorkflowSchema = z.object({ practiceSetId: id }).strict();
 export type WorkflowInput = z.infer<typeof workflowInputSchema>;

@@ -10,6 +10,10 @@ const dependencies = vi.hoisted(() => ({
   getMediaVersions: vi.fn(),
   lockQuestions: vi.fn(),
   lockMediaVersions: vi.fn(),
+  lockCompatibleMediaForQuestion: vi.fn(),
+  getQuestionMediaEntries: vi.fn(),
+  lockQuestionMediaEntries: vi.fn(),
+  getReadinessCandidates: vi.fn(),
   createPublishedPracticeSet: vi.fn(),
   getPracticeSet: vi.fn(),
   retirePracticeSet: vi.fn(),
@@ -46,6 +50,8 @@ import {
   acceptException,
   approveContent,
   createManualQuestion,
+  buildContentReadiness,
+  getContentReadiness,
   publishContent,
   publishPracticeSet,
   recordPhonePreview,
@@ -116,6 +122,9 @@ describe("content draft use cases", () => {
     });
     dependencies.lockQuestions.mockImplementation((ids: string[]) => dependencies.getQuestions(ids));
     dependencies.lockMediaVersions.mockImplementation((ids: string[]) => dependencies.getMediaVersions(ids));
+    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([]);
+    dependencies.getQuestionMediaEntries.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     dependencies.recordValidation.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000010",
     );
@@ -131,11 +140,57 @@ describe("content draft use cases", () => {
   it("stores an authorised manual draft in a transaction", async () => {
     await createManualQuestion(lead, input);
     expect(dependencies.createQuestion).toHaveBeenCalledWith(
-      input,
+      expect.objectContaining(input),
       lead.id,
       "manual",
       { transaction: "boundary" },
     );
+  });
+  it("validates AI question media before invoking the provider and persists it with the draft", async () => {
+    config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
+    const mediaId = "018f0000-0000-7000-8000-000000000015";
+    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: mediaId, paper: input.paper, part: "1", engine: input.engine, status: "draft" }]);
+    dependencies.generate.mockResolvedValue({ endpoint: "https://ai.example.test", model: "text-model", output: { prompt: "Generated cat prompt", options: ["true", "false"] } });
+    dependencies.createQuestion.mockResolvedValue("018f0000-0000-7000-8000-000000000016");
+    await requestAiDraft(lead, { kind: "text", staffPrompt: "Create a draft", permittedReferences: [], draft: { ...input, mediaIds: [mediaId] } });
+    expect(dependencies.lockCompatibleMediaForQuestion).toHaveBeenCalledBefore(dependencies.generate);
+    expect(dependencies.createQuestion).toHaveBeenCalledWith(expect.objectContaining({ mediaIds: [mediaId] }), lead.id, "generated", { transaction: "boundary" }, undefined);
+  });
+  it("rejects retired media before persisting a question", async () => {
+    const mediaId = "018f0000-0000-7000-8000-000000000015";
+    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: mediaId, paper: input.paper, part: "1", engine: input.engine, status: "retired" }]);
+    await expect(createManualQuestion(lead, { ...input, mediaIds: [mediaId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "MEDIA_RETIRED" })]) });
+    expect(dependencies.createQuestion).not.toHaveBeenCalled();
+  });
+  it("proves a same-paper-part composition per topic and task type from current published associations", () => {
+    const candidates = [
+      { question: { id: "question-1", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: ["grammar-1"], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
+      { question: { id: "question-2", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
+      { question: { id: "question-3", engine: "audio_note_taking", paper: "listening", part: "2", primaryTargetId: "target-2", supportingTargetIds: [], topicIds: ["topic-2"], estimatedDurationSeconds: "300" }, guidance: { topic: "School", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } },
+    ] as never;
+    const readiness = buildContentReadiness(candidates);
+    expect(readiness.coverage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ questionId: "question-1", topic: "Animals", taskType: "Audio picture choice", mediaEligible: true, composition: expect.objectContaining({ durationSeconds: 300, primaryTargetIds: ["target-1"] }), gaps: [] }),
+      expect.objectContaining({ questionId: "question-3", mediaEligible: false, gaps: ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] }),
+    ]));
+    expect(readiness.engines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ engine: "picture_yes_no", covered: false, gaps: ["NO_PUBLISHED_QUESTION"] }),
+    ]));
+  });
+  it("does not use another topic, task type, or engine to prove a composition", () => {
+    const candidate = (id: string, topic: string, taskFormat: string, engine = "picture_true_false") => ({ question: { id, engine, paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { topic, taskFormat }, media: null });
+    const readiness = buildContentReadiness([candidate("same", "Animals", "Picture true false"), candidate("other-topic", "Food", "Picture true false"), candidate("other-task", "Animals", "Picture yes no"), candidate("other-engine", "Animals", "Picture true false", "picture_yes_no")] as never);
+    expect(readiness.coverage.find((item) => item.questionId === "same")).toMatchObject({ gaps: ["NO_300_600_COMPOSITION"] });
+  });
+  it("flags a current-media-eligible topic/task type with no valid composition", () => {
+    const readiness = buildContentReadiness([{ question: { id: "question-1", engine: "picture_true_false", paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { topic: "Animals", taskFormat: "Picture true false" }, media: null }] as never);
+    expect(readiness.coverage[0]).toMatchObject({ mediaEligible: true, composition: undefined, gaps: ["NO_300_600_COMPOSITION"] });
+  });
+  it("authorises readiness before reading candidates and excludes current retired media", async () => {
+    await expect(getContentReadiness(teacher)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dependencies.getReadinessCandidates).not.toHaveBeenCalled();
+    dependencies.getReadinessCandidates.mockResolvedValue([{ question: { id: "question-1", engine: "audio_note_taking", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "300" }, guidance: { topic: "Animals", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } }]);
+    await expect(getContentReadiness(lead)).resolves.toMatchObject({ coverage: [expect.objectContaining({ mediaEligible: false, gaps: ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] })] });
   });
   it("denies a teacher before any content or audit mutation", async () => {
     await expect(createManualQuestion(teacher, input)).rejects.toMatchObject({
@@ -393,7 +448,7 @@ describe("content draft use cases", () => {
     });
     await reviseQuestion(lead, "018f0000-0000-7000-8000-000000000007", input);
     expect(dependencies.createQuestion).toHaveBeenCalledWith(
-      input,
+      expect.objectContaining(input),
       lead.id,
       "manual",
       { transaction: "boundary" },
@@ -407,7 +462,7 @@ describe("content draft use cases", () => {
     });
     expect(dependencies.recordValidation).toHaveBeenCalledWith(
       "question",
-      expect.any(String),
+      "018f0000-0000-7000-8000-000000000009",
       lead.id,
       [],
       { transaction: "boundary" },
@@ -588,11 +643,11 @@ describe("content draft use cases", () => {
       }),
     ).resolves.toBe("018f0000-0000-7000-8000-000000000011");
     expect(dependencies.createQuestion).toHaveBeenCalledWith(
-      input,
+      expect.objectContaining({ ...input, mediaIds: [] }),
       lead.id,
       "generated",
       { transaction: "boundary" },
-      expect.any(String),
+      "018f0000-0000-7000-8000-000000000009",
     );
   });
   it("limits preview confirmation to successful 375px image media in review", async () => {
@@ -771,11 +826,10 @@ describe("content draft use cases", () => {
         estimatedDurationSeconds: "60",
       },
     ]);
-    dependencies.getMediaVersions.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     await expect(
       publishPracticeSet(lead, {
         questionIds: ["018f0000-0000-7000-8000-000000000009"],
-        mediaByQuestion: [],
       }),
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
@@ -785,9 +839,8 @@ describe("content draft use cases", () => {
     });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
-  it("returns mapping and audio findings without materialising a set", async () => {
+  it("returns stored-association audio findings without materialising a set", async () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
-    const unmappedQuestionId = "018f0000-0000-7000-8000-000000000012";
     dependencies.getQuestions.mockResolvedValue([
       {
         ...input,
@@ -798,31 +851,22 @@ describe("content draft use cases", () => {
         estimatedDurationSeconds: "300",
       },
     ]);
-    dependencies.getMediaVersions.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     await expect(
       publishPracticeSet(lead, {
         questionIds: [questionId],
-        mediaByQuestion: [
-          { questionId: unmappedQuestionId, mediaIds: [] },
-          { questionId: unmappedQuestionId, mediaIds: [] },
-        ],
       }),
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
-      findings: expect.arrayContaining([
-        expect.objectContaining({
-          code: "MEDIA_MAPPING_QUESTION_NOT_SELECTED",
-        }),
-        expect.objectContaining({ code: "MEDIA_MAPPING_DUPLICATE" }),
-      ]),
+      findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]),
     });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
   it("requires audio media even when an audio question has no mapping", async () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
     dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_note_taking", part: "1", estimatedDurationSeconds: "300" }]);
-    dependencies.getMediaVersions.mockResolvedValue([]);
-    await expect(publishPracticeSet(lead, { questionIds: [questionId], mediaByQuestion: [] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
+    await expect(publishPracticeSet(lead, { questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
   it("publishes a valid set and snapshots an optional post-submission hint", async () => {
@@ -836,12 +880,13 @@ describe("content draft use cases", () => {
       postSubmitHint: { locale: "en-GB", message: "Look carefully at the picture." },
     };
     dependencies.getQuestions.mockResolvedValue([question]);
-    dependencies.getMediaVersions.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     dependencies.createPublishedPracticeSet.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000014",
     );
-    await expect(publishPracticeSet(lead, { questionIds: [questionId], mediaByQuestion: [] })).resolves.toBe("018f0000-0000-7000-8000-000000000014");
+    await expect(publishPracticeSet(lead, { questionIds: [questionId] })).resolves.toBe("018f0000-0000-7000-8000-000000000014");
     expect(dependencies.createPublishedPracticeSet).toHaveBeenCalledWith(expect.objectContaining({ questions: [question], actorId: lead.id }), { transaction: "boundary" });
+    expect(dependencies.lockQuestionMediaEntries).toHaveBeenCalledWith([questionId], { transaction: "boundary" });
     expect(dependencies.recordPracticeSetAudit).toHaveBeenCalledWith("PRACTICE_SET_PUBLISHED", "018f0000-0000-7000-8000-000000000014", lead.id, { transaction: "boundary" });
   });
   it("uses dedicated practice-set audit evidence on retirement", async () => {

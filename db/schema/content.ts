@@ -307,3 +307,27 @@ export const practiceSetItemMedia = pgTable("practice_set_item_media", {
   accessibilityMetadata: jsonb("accessibility_metadata").notNull(),
   provenance: jsonb("provenance").notNull(),
 });
+
+export const questionVersionMedia = pgTable(
+  "question_version_media",
+  {
+    id: uuid("id").primaryKey(),
+    questionVersionId: uuid("question_version_id")
+      .notNull()
+      .references(() => questionDrafts.id),
+    mediaVersionId: uuid("media_version_id")
+      .notNull()
+      .references(() => mediaDrafts.id),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    unique("question_version_media_question_media_unique").on(
+      table.questionVersionId,
+      table.mediaVersionId,
+    ),
+    unique("question_version_media_question_position_unique").on(
+      table.questionVersionId,
+      table.position,
+    ),
+  ],
+);

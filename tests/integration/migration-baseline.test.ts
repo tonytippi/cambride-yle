@@ -65,6 +65,10 @@ describe("migration baseline", () => {
       "db/migrations/0015_publish_immutable_practice_set_schema.sql",
       "utf8",
     );
+    const questionMediaMigration = await readFile(
+      "db/migrations/0016_question_version_media.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -194,6 +198,14 @@ describe("migration baseline", () => {
       "question_drafts_published_immutable",
     );
     expect(publicationSchemaMigration).toContain("practice_sets_immutable");
+    expect(journal).toContain("0016_question_version_media");
+    expect(questionMediaMigration).toContain(
+      'CREATE TABLE "question_version_media"',
+    );
+    expect(questionMediaMigration).toContain("QUESTION_MEDIA_SCOPE_MISMATCH");
+    expect(questionMediaMigration).toContain(
+      "QUESTION_MEDIA_ASSOCIATION_IMMUTABLE",
+    );
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
@@ -265,6 +277,49 @@ describe("migration baseline", () => {
           )
             throw error;
         });
+    } finally {
+      await sql.end();
+    }
+  });
+  it("rejects direct question-media association mutations and invalid lifecycle/scope inserts", async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+    try {
+      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('question_version_media', 'question_drafts', 'media_drafts', 'curriculum_targets', 'curriculum_guidance', 'answer_policies', 'answer_policy_versions')`;
+      if (tables.length !== 7) return;
+      await sql.begin(async (transaction) => {
+        const suffix = crypto.randomUUID();
+        const accountId = crypto.randomUUID();
+        const targetId = crypto.randomUUID();
+        const guidanceId = crypto.randomUUID();
+        const policyId = crypto.randomUUID();
+        const policyVersionId = crypto.randomUUID();
+        const questionId = crypto.randomUUID();
+        const matchingMediaId = crypto.randomUUID();
+        const mismatchedMediaId = crypto.randomUUID();
+        const associationId = crypto.randomUUID();
+        const validationId = crypto.randomUUID();
+        const reviewId = crypto.randomUUID();
+        await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${accountId}, ${`association-${suffix}@example.test`}, ${`association-${suffix}@example.test`}, 'Reviewer', 'academic_lead')`;
+        await transaction`INSERT INTO curriculum_targets (id, canonical_id, category, guidance, is_approved, created_by) VALUES (${targetId}, ${`target-${suffix}`}, 'vocabulary', 'Controlled target', true, ${accountId})`;
+        await transaction`INSERT INTO curriculum_guidance (id, paper, part, engine, topic, task_format, max_words, max_options, approved_names, approved_numbers) VALUES (${guidanceId}, 'reading_writing', 1, 'picture_true_false', 'Animals', 'Picture true false', 10, 2, '[]'::jsonb, '[]'::jsonb)`;
+        await transaction`INSERT INTO answer_policies (id, canonical_id, target_id, guidance_id, paper, part, engine) VALUES (${policyId}, ${`policy-${suffix}`}, ${targetId}, ${guidanceId}, 'reading_writing', 1, 'picture_true_false')`;
+        await transaction`INSERT INTO answer_policy_versions (id, policy_id, version, input_kind, canonical_answer, accepted_answers, normalisation, max_words, teacher_review_if_uncertain, created_by) VALUES (${policyVersionId}, ${policyId}, 1, 'boolean', 'true'::jsonb, '[]'::jsonb, '{}'::jsonb, 1, false, ${accountId})`;
+        await transaction`INSERT INTO question_drafts (id, status, origin, paper, part, engine, primary_target_id, supporting_target_ids, topic_ids, guidance_id, estimated_duration_seconds, accessibility_metadata, provenance, created_by, answer_policy_version_id, prompt, options) VALUES (${questionId}, 'draft', 'manual', 'reading_writing', '1', 'picture_true_false', ${targetId}, '[]'::jsonb, ${JSON.stringify([targetId])}::jsonb, ${guidanceId}, '60', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb, ${accountId}, ${policyVersionId}, 'Cat', '["true","false"]'::jsonb)`;
+        for (const [id, paper] of [[matchingMediaId, "reading_writing"], [mismatchedMediaId, "listening"]] as const)
+          await transaction`INSERT INTO media_drafts (id, status, origin, paper, part, engine, primary_target_id, supporting_target_ids, topic_ids, guidance_id, estimated_duration_seconds, accessibility_metadata, provenance, created_by, media_type, description) VALUES (${id}, 'draft', 'manual', ${paper}, '1', 'picture_true_false', ${targetId}, '[]'::jsonb, ${JSON.stringify([targetId])}::jsonb, ${guidanceId}, '60', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb, ${accountId}, 'image', 'Cat image')`;
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO question_version_media (id, question_version_id, media_version_id, position) VALUES (${crypto.randomUUID()}, ${questionId}, ${mismatchedMediaId}, 1)`)).rejects.toThrow(/QUESTION_MEDIA_SCOPE_MISMATCH/);
+        await transaction`INSERT INTO question_version_media (id, question_version_id, media_version_id, position) VALUES (${associationId}, ${questionId}, ${matchingMediaId}, 1)`;
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO question_version_media (id, question_version_id, media_version_id, position) VALUES (${crypto.randomUUID()}, ${questionId}, ${matchingMediaId}, 2)`)).rejects.toThrow(/question_version_media_question_media_unique/);
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE question_version_media SET position = 2 WHERE id = ${associationId}`)).rejects.toThrow(/QUESTION_MEDIA_ASSOCIATION_IMMUTABLE/);
+        await expect(transaction.savepoint((savepoint) => savepoint`DELETE FROM question_version_media WHERE id = ${associationId}`)).rejects.toThrow(/QUESTION_MEDIA_ASSOCIATION_IMMUTABLE/);
+        await transaction`INSERT INTO content_validation_results (id, kind, target_id, actor_id, findings) VALUES (${validationId}, 'question', ${questionId}, ${accountId}, '[]'::jsonb)`;
+        await transaction`INSERT INTO content_review_records (id, kind, target_id, actor_id, decision, validation_result_id, findings) VALUES (${reviewId}, 'question', ${questionId}, ${accountId}, 'submitted', ${validationId}, '[]'::jsonb)`;
+        await transaction`UPDATE question_drafts SET status = 'in_review' WHERE id = ${questionId}`;
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO question_version_media (id, question_version_id, media_version_id, position) VALUES (${crypto.randomUUID()}, ${questionId}, ${matchingMediaId}, 2)`)).rejects.toThrow(/QUESTION_MEDIA_QUESTION_NOT_DRAFT/);
+        throw new Error("ROLLBACK_TEST_TRANSACTION");
+      }).catch((error: unknown) => {
+        if (!(error instanceof Error) || error.message !== "ROLLBACK_TEST_TRANSACTION") throw error;
+      });
     } finally {
       await sql.end();
     }

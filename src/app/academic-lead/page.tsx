@@ -8,13 +8,14 @@ import {
   TargetEditForm,
   TargetForm,
 } from "@/features/curriculum/ui/catalogue-forms";
-import { getContentDrafts } from "@/features/content/application/content";
+import { getContentDrafts, getContentReadiness } from "@/features/content/application/content";
 import {
   ContentDraftForms,
   ContentWorkflowControls,
   PracticeSetComposer,
   PracticeSetRetireControl,
 } from "@/features/content/ui/draft-forms";
+import { ReadinessReport } from "@/features/content/ui/readiness-report";
 import {
   acceptExceptionAction,
   approveContentAction,
@@ -40,9 +41,10 @@ type Finding = { field: string; code: string; message: string };
 
 export default async function AcademicLeadHome() {
   const actor = await requireRole(["academic_lead", "admin"]);
-  const [catalogue, drafts] = await Promise.all([
+  const [catalogue, drafts, readiness] = await Promise.all([
     getCatalogue(actor),
     getContentDrafts(actor),
+    getContentReadiness(actor),
   ]);
   const history = (kind: "question" | "media", id: string) => (
     <ul className="audit-history" aria-label="Validation and review history">
@@ -123,6 +125,7 @@ export default async function AcademicLeadHome() {
   const publishedMedia = drafts.media.filter(
     (item) => item.status === "published",
   );
+  const targetLabels = new Map(catalogue.targets.map((target) => [target.id, target.canonicalId]));
 
   return (
     <main className="shell">
@@ -187,6 +190,7 @@ export default async function AcademicLeadHome() {
           targets={catalogue.targets}
           guidance={catalogue.guidance}
           policies={catalogue.policies}
+          media={drafts.media}
         />
         <h2>Published practice-set composer</h2>
         <PracticeSetComposer
@@ -194,6 +198,8 @@ export default async function AcademicLeadHome() {
           questions={publishedQuestions}
           media={publishedMedia}
         />
+        <h2>Content readiness</h2>
+        <ReadinessReport readiness={readiness} targetLabels={targetLabels} />
         <h2>Practice sets</h2>
         <div className="account-list">
           {drafts.sets.map((set) => (

@@ -1,0 +1,3 @@
+Story 2.5 attempted implementation was intentionally not retained.
+
+Review blocker: the schema has no direct current eligibility association between a published question version and its required media. Reusing immutable practice-set item snapshots would answer a historical publication question, not whether staff can compose a new valid set. A future story or product decision must establish that association before a readiness report can truthfully evaluate essential media.

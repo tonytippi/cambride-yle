@@ -65,6 +65,98 @@ export async function getContentDrafts(actor: Actor) {
   staff(actor);
   return repository.listDrafts();
 }
+type ReadinessCandidate = {
+  question: {
+    id: string;
+    engine: "picture_true_false" | "picture_yes_no" | "audio_picture_choice" | "audio_note_taking" | "word_bank_cloze";
+    paper: "listening" | "reading_writing";
+    part: string;
+    primaryTargetId: string;
+    supportingTargetIds: unknown;
+    topicIds: unknown;
+    estimatedDurationSeconds: string;
+  };
+  media: { mediaType: string; status: string } | null;
+  guidance: { topic: string; taskFormat: string };
+};
+type ReadinessQuestion = Omit<ReadinessCandidate["question"], "estimatedDurationSeconds" | "supportingTargetIds" | "topicIds"> & {
+  estimatedDurationSeconds: number;
+  supportingTargetIds: string[];
+  topicIds: string[];
+  topic: string;
+  taskType: string;
+  media: { mediaType: string; status: string }[];
+  mediaEligible: boolean;
+};
+const audioEngines = new Set(["audio_picture_choice", "audio_note_taking"]);
+const compositionFor = (questions: ReadinessQuestion[], requiredId: string) => {
+  let result: ReadinessQuestion[] | undefined;
+  const visit = (start: number, chosen: ReadinessQuestion[], duration: number, objectives: Set<string>) => {
+    if (result || duration > 600 || objectives.size > 2) return;
+    if (chosen.some((question) => question.id === requiredId) && duration >= 300) {
+      result = chosen;
+      return;
+    }
+    for (let index = start; index < questions.length; index += 1) {
+      const question = questions[index]!;
+      const nextObjectives = new Set(objectives).add(question.primaryTargetId);
+      visit(index + 1, [...chosen, question], duration + question.estimatedDurationSeconds, nextObjectives);
+    }
+  };
+  visit(0, [], 0, new Set());
+  return result;
+};
+export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
+  const questions = new Map<string, ReadinessQuestion>();
+  for (const { question, media, guidance } of candidates) {
+    const current = questions.get(question.id) ?? {
+      ...question,
+      estimatedDurationSeconds: Number(question.estimatedDurationSeconds),
+      supportingTargetIds: question.supportingTargetIds as string[],
+      topicIds: question.topicIds as string[],
+      topic: guidance.topic,
+      taskType: guidance.taskFormat,
+      media: [],
+      mediaEligible: true,
+    };
+    if (media) current.media.push(media);
+    questions.set(question.id, current);
+  }
+  for (const question of questions.values())
+    question.mediaEligible = question.media.every((media) => media.status === "published") &&
+      (!audioEngines.has(question.engine) || question.media.some((media) => media.mediaType === "audio" && media.status === "published"));
+  const all = [...questions.values()];
+  const coverage = all.map((question) => {
+    const pool = all.filter((candidate) => candidate.mediaEligible && candidate.paper === question.paper && candidate.part === question.part && candidate.engine === question.engine && candidate.topic === question.topic && candidate.taskType === question.taskType);
+    const proof = question.mediaEligible ? compositionFor(pool, question.id) : undefined;
+    const hasAudio = question.media.some((media) => media.mediaType === "audio");
+    const gaps = question.mediaEligible
+      ? proof ? [] : ["NO_300_600_COMPOSITION"]
+      : audioEngines.has(question.engine) && !hasAudio
+        ? ["AUDIO_MEDIA_REQUIRED"]
+        : ["ASSOCIATED_MEDIA_NOT_PUBLISHED"];
+    return {
+      questionId: question.id,
+      engine: question.engine,
+      paper: question.paper,
+      part: question.part,
+      topic: question.topic,
+      taskType: question.taskType,
+      vocabularyGrammarTargets: [question.primaryTargetId, ...question.supportingTargetIds],
+      topicTargetIds: question.topicIds,
+      estimatedDurationSeconds: question.estimatedDurationSeconds,
+      mediaEligible: question.mediaEligible,
+      composition: proof && { questionIds: proof.map((item) => item.id), durationSeconds: proof.reduce((total, item) => total + item.estimatedDurationSeconds, 0), primaryTargetIds: [...new Set(proof.map((item) => item.primaryTargetId))] },
+      gaps,
+    };
+  });
+  return { coverage, engines: (awaitableEngines as readonly string[]).map((engine) => ({ engine, covered: coverage.some((item) => item.engine === engine), gaps: coverage.some((item) => item.engine === engine) ? [] : ["NO_PUBLISHED_QUESTION"] })) };
+};
+const awaitableEngines = ["picture_true_false", "picture_yes_no", "audio_picture_choice", "audio_note_taking", "word_bank_cloze"] as const;
+export async function getContentReadiness(actor: Actor) {
+  staff(actor);
+  return buildContentReadiness(await repository.getReadinessCandidates());
+}
 async function validateReferences(
   input: QuestionDraftInput | MediaDraftInput,
   tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
@@ -123,6 +215,22 @@ async function validateReferences(
       findings,
     );
 }
+async function validateQuestionMedia(
+  input: QuestionDraftInput,
+  tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
+) {
+  if (!input.mediaIds?.length) return;
+  const media = await repository.lockCompatibleMediaForQuestion(input, tx);
+  const findings: ContentFindings = [];
+  if (media.length !== input.mediaIds.length)
+    findings.push({ field: "mediaIds", code: "MEDIA_NOT_FOUND", message: "Every selected media version must exist." });
+  for (const item of media)
+    if (item.paper !== input.paper || item.part !== String(input.part) || item.engine !== input.engine)
+      findings.push({ field: "mediaIds", code: "MEDIA_SCOPE_MISMATCH", message: "Media must match the question paper, part and engine." });
+    else if (item.status === "retired")
+      findings.push({ field: "mediaIds", code: "MEDIA_RETIRED", message: "Retired media cannot be associated with a question draft." });
+  if (findings.length) throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", findings);
+}
 export async function createManualQuestion(
   actor: Actor,
   input: QuestionDraftInput,
@@ -131,6 +239,7 @@ export async function createManualQuestion(
   const valid = parse(questionDraftSchema, input);
   return database.transaction(async (tx) => {
     await validateReferences(valid, tx);
+    await validateQuestionMedia(valid, tx);
     return repository.createQuestion(valid, actor.id, "manual", tx);
   });
 }
@@ -156,6 +265,7 @@ export async function reviseQuestion(
         "The question draft was not found.",
       );
     await validateReferences(valid, tx);
+    await validateQuestionMedia(valid, tx);
     return repository.createQuestion(valid, actor.id, "manual", tx, sourceId);
   });
 }
@@ -216,6 +326,15 @@ const validateStored = async (
   } catch (error) {
     if (error instanceof ContentError) findings.push(...error.findings);
     else throw error;
+  }
+  if (input.kind === "question") {
+    const associations = await repository.lockQuestionMediaEntries([input.targetId], tx);
+    const question = item as Awaited<ReturnType<typeof repository.getQuestion>>;
+    const associated = associations.map((entry) => entry.media);
+    if (associated.some((media) => media.status === "retired"))
+      findings.push({ field: "mediaIds", code: "MEDIA_RETIRED", message: "Retired media cannot remain associated with a question draft." });
+    if (associated.some((media) => media.paper !== question!.paper || media.part !== question!.part || media.engine !== question!.engine))
+      findings.push({ field: "mediaIds", code: "MEDIA_SCOPE_MISMATCH", message: "Media must match the question paper, part and engine." });
   }
   if (input.kind === "question") {
     const question = item as Awaited<ReturnType<typeof repository.getQuestion>>;
@@ -549,26 +668,10 @@ export async function publishPracticeSet(
   const valid = parse(composePracticeSetSchema, input);
   return database.transaction(async (tx) => {
     const questions = await repository.lockQuestions(valid.questionIds, tx);
-    const mediaIds = valid.mediaByQuestion.flatMap((entry) => entry.mediaIds);
-    const media = await repository.lockMediaVersions(mediaIds, tx);
+    const entries = await repository.lockQuestionMediaEntries(valid.questionIds, tx);
+    const media = entries.map((entry) => entry.media);
     const findings: ContentFindings = [];
     const selectedQuestionIds = new Set(valid.questionIds);
-    const mappedQuestionIds = new Set<string>();
-    for (const entry of valid.mediaByQuestion) {
-      if (!selectedQuestionIds.has(entry.questionId))
-        findings.push({
-          field: "mediaByQuestion",
-          code: "MEDIA_MAPPING_QUESTION_NOT_SELECTED",
-          message: "Media mappings must reference a selected question.",
-        });
-      if (mappedQuestionIds.has(entry.questionId))
-        findings.push({
-          field: "mediaByQuestion",
-          code: "MEDIA_MAPPING_DUPLICATE",
-          message: "Each selected question may have one media mapping.",
-        });
-      mappedQuestionIds.add(entry.questionId);
-    }
     if (selectedQuestionIds.size !== valid.questionIds.length)
       findings.push({
         field: "questionIds",
@@ -585,31 +688,31 @@ export async function publishPracticeSet(
         message: "Every selected question must be published.",
       });
     if (
-      media.length !== new Set(mediaIds).size ||
       media.some((item) => item.status !== "published")
     )
       findings.push({
-        field: "mediaByQuestion",
+        field: "mediaIds",
         code: "MEDIA_NOT_PUBLISHED",
         message: "Every selected media version must be published.",
       });
     const questionsById = new Map(
       questions.map((question) => [question.id, question]),
     );
-    const mediaById = new Map(media.map((item) => [item.id, item]));
-    for (const entry of valid.mediaByQuestion) {
-      const question = questionsById.get(entry.questionId);
-      for (const mediaId of entry.mediaIds) {
-        const item = mediaById.get(mediaId);
+    const mediaByQuestion = new Map<string, typeof media>();
+    for (const entry of entries) {
+      const question = questionsById.get(entry.questionVersionId);
+      const item = entry.media;
+      if (question && item) {
+        const mapped = mediaByQuestion.get(question.id) ?? [];
+        mapped.push(item);
+        mediaByQuestion.set(question.id, mapped);
         if (
-          question &&
-          item &&
           (item.paper !== question.paper ||
             item.part !== question.part ||
             item.engine !== question.engine)
         )
           findings.push({
-            field: "mediaByQuestion",
+            field: "mediaIds",
             code: "MEDIA_SCOPE_MISMATCH",
             message: "Media must match its question paper, part and engine.",
           });
@@ -619,14 +722,10 @@ export async function publishPracticeSet(
       if (
         (question.engine === "audio_picture_choice" ||
           question.engine === "audio_note_taking") &&
-        !valid.mediaByQuestion
-          .find((entry) => entry.questionId === question.id)
-          ?.mediaIds.some(
-            (mediaId) => mediaById.get(mediaId)?.mediaType === "audio",
-          )
+        !mediaByQuestion.get(question.id)?.some((item) => item.mediaType === "audio")
       )
         findings.push({
-          field: "mediaByQuestion",
+          field: "mediaIds",
           code: "AUDIO_MEDIA_REQUIRED",
           message:
             "This audio engine requires an associated published audio version.",
@@ -668,14 +767,7 @@ export async function publishPracticeSet(
     const setId = await repository.createPublishedPracticeSet(
       {
         questions,
-        mediaByQuestion: new Map(
-          valid.mediaByQuestion.map((entry) => [
-            entry.questionId,
-            entry.mediaIds
-              .map((mediaId) => mediaById.get(mediaId))
-              .filter((media): media is NonNullable<typeof media> => Boolean(media)),
-          ]),
-        ),
+        mediaByQuestion,
         actorId: actor.id,
       },
       tx,
@@ -761,6 +853,7 @@ export async function rejectContent(
             prompt: draft.prompt,
             options: draft.options,
             postSubmitHint: draft.postSubmitHint ?? undefined,
+            mediaIds: [],
           })
         : mediaDraftSchema.parse({
             ...base,
@@ -820,6 +913,7 @@ export async function requestAiDraft(
   try {
     await database.transaction(async (tx) => {
       await validateReferences(request.draft, tx);
+      if (request.kind === "text") await validateQuestionMedia(request.draft, tx);
       if (sourceId) {
         const exists =
           request.kind === "text"
@@ -856,6 +950,7 @@ export async function requestAiDraft(
           ),
         };
         await validateReferences(generated, tx);
+        await validateQuestionMedia(generated, tx);
         const targetId = await repository.createQuestion(
           generated,
           actor.id,

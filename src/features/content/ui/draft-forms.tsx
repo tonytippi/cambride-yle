@@ -12,6 +12,7 @@ type Shared = {
   targets: { id: string; canonicalId: string }[];
   guidance: { id: string; topic: string }[];
   policies: { currentVersionId: string | null; canonicalId: string }[];
+  media: { id: string; mediaType: string; status: string; paper: string; part: string; engine: string }[];
 };
 function Status({ state }: { state: ContentActionState }) {
   return (
@@ -34,7 +35,7 @@ function Status({ state }: { state: ContentActionState }) {
     </>
   );
 }
-function SharedFields({ targets, guidance }: Omit<Shared, "policies">) {
+function SharedFields({ targets, guidance }: Omit<Shared, "policies" | "media">) {
   return (
     <>
       <label>
@@ -127,7 +128,7 @@ function SharedFields({ targets, guidance }: Omit<Shared, "policies">) {
     </>
   );
 }
-function QuestionFields({ policies }: Pick<Shared, "policies">) {
+function QuestionFields({ policies, media }: Pick<Shared, "policies" | "media">) {
   return (
     <>
       <label>
@@ -158,6 +159,16 @@ function QuestionFields({ policies }: Pick<Shared, "policies">) {
         Post-submission learning hint, English (optional)
         <textarea name="postSubmitHint" />
       </label>
+      <label>
+        Associated media versions
+        <select name="mediaIds" multiple size={5}>
+          {media.map((item) => <option key={item.id} value={item.id}>{item.mediaType} · {item.status} · {item.paper.replace("_", " ")} Part {item.part} · {item.engine} · {item.id}</option>)}
+        </select>
+      </label>
+      <details>
+        <summary>Association rules</summary>
+        <p>Select only media matching the question paper, part and engine. Draft and approved media may be selected; retired media is rejected.</p>
+      </details>
     </>
   );
 }
@@ -224,7 +235,7 @@ export function ContentDraftForms({
       >
         <p>Every saved record remains a draft for later academic review.</p>
         <SharedFields {...shared} />
-        <QuestionFields policies={shared.policies} />
+        <QuestionFields policies={shared.policies} media={shared.media} />
       </Form>
       <Form
         title="Save manual media draft"
@@ -243,7 +254,7 @@ export function ContentDraftForms({
         <input type="hidden" name="draftType" value="question" />
         <input type="hidden" name="kind" value="text" />
         <SharedFields {...shared} />
-        <QuestionFields policies={shared.policies} />
+        <QuestionFields policies={shared.policies} media={shared.media} />
         <label>
           Source question draft ID to rerun (optional)
           <input name="sourceId" />
@@ -435,10 +446,7 @@ export function PracticeSetComposer({
         Question IDs, comma separated
         <textarea name="questionIds" required />
       </label>
-      <label>
-        Media references, one per line: question ID | media ID, media ID
-        <textarea name="mediaReferences" />
-      </label>
+      <p>Associated media is taken from each question version and cannot be changed here.</p>
       <details>
         <summary>Published library IDs</summary>
         <p>
