@@ -26,12 +26,21 @@ context:
 
 **Never:** Do not copy, publish, download, or present imported Cambridge word lists; do not add learner-facing content, question/media lifecycle work, AI generation, scoring attempts, speaking, public sign-up, or policy approval/publishing workflow; do not let an LLM decide answer correctness; do not close a governed gate.
 
+## Agreed P0 Semantics
+
+- Target identifiers use ASCII lowercase letters, digits, and hyphens only; trim and lowercase before uniqueness checks, and do not change an identifier after creation.
+- The fixed engine-to-input-kind mapping is: `picture_true_false` -> `boolean`; `picture_yes_no` -> `yes_no`; `audio_picture_choice` -> `choice`; `audio_note_taking` -> `name`, `number`, or `word`; `word_bank_cloze` -> `word`. Reject any other pairing.
+- Each policy edit creates a new immutable version and moves its `currentVersionId` to that version. P0 does not provide reselecting an older version or concurrent-edit conflict handling.
+- Matching uses Unicode NFC, trims leading/trailing whitespace, collapses repeated internal whitespace, and compares case-insensitively using the fixed `en-GB` locale. Punctuation and number-word matching apply only when enabled by the policy; unsupported number formats do not match.
+- `choice`, `boolean`, and `yes_no` produce only `correct` or `incorrect`. `name` and `word` may produce `needs_teacher_review` only when that outcome is explicitly configured by the policy; otherwise an unmatched response is `incorrect`.
+- Validate the complete policy and all conformance vectors before writing. Persist a valid policy version and its vectors in one transaction; never leave a partial version.
+
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
 | Create target | Authorised staff submits a unique canonical target with valid category, level and guidance metadata | A controlled target is stored and appears in the staff catalogue | Duplicate identifier returns `TARGET_ID_CONFLICT`; malformed values return field findings |
-| Update policy | Authorised staff submits a new version for an existing policy with answer semantics and vectors | A new immutable version becomes the current editable policy reference; prior versions remain readable | Unknown policy/target returns stable not-found; malformed semantics/vectors return named findings |
+| Update policy | Authorised staff submits a new version for an existing policy with answer semantics and vectors | A new immutable version becomes the version currently selected for authoring; prior versions remain readable | Unknown policy/target returns stable not-found; malformed semantics/vectors return named findings |
 | Conformance | A stored policy is evaluated against its vectors for an engine input kind | Each vector records the expected deterministic match, non-match, or teacher-review result | Unsupported input kind or inconsistent expected result blocks saving |
 | Unauthorised request | Learner or teacher invokes a curriculum mutation or protected route | No records are changed and the actor is denied | Application layer returns `FORBIDDEN`; route redirects through existing role handling |
 | Out-of-bound guidance | Staff tries to record invalid engine, out-of-level vocabulary/grammar, unapproved name/number, or excessive template limits | The catalogue/editor displays specific validation findings rather than silently accepting the value | Validation is returned as structured findings and no invalid policy version is persisted |
@@ -63,9 +72,16 @@ context:
 **Acceptance Criteria:**
 - Given an `academic_lead` or admin opens the protected workspace, when guidance is loaded, then it presents internal paper/part, P0 engine, topic, vocabulary/grammar, and task-format guidance without a public curriculum claim.
 - Given authorised staff create or update controlled records, when submissions satisfy their contracts, then canonical targets and versioned machine-readable answer policies persist with exact matching semantics and historical policy versions remain unchanged.
-- Given policies for each input kind required by the five P0 engines, when their conformance vectors run, then expected correct, incorrect, and `needs_teacher_review` outcomes are deterministic and saving fails on a conflicting vector.
+- Given policies use the fixed engine-to-input-kind mapping, when their conformance vectors run, then expected outcomes are deterministic: `correct` or `incorrect` for closed inputs, with `needs_teacher_review` only for explicitly configured `name` or `word` policies; saving fails on a conflicting vector.
 - Given vocabulary/grammar, approved name/number, engine, or task-template data falls outside controlled guidance, when staff submit it, then the system returns named validation findings and does not persist an invalid policy version.
 - Given a learner or teacher attempts any protected curriculum mutation, when the request reaches the application boundary, then it returns `FORBIDDEN` and leaves all controlled records unchanged.
+
+### Review Findings
+
+- [x] [Review][Patch] Enforce the agreed engine-to-input-kind mapping [src/features/curriculum/domain/contracts.ts:4-5] — Removed application support for `assignment`; `audio_note_taking` now permits `word` and `word_bank_cloze` permits only `word`. The deployed PostgreSQL enum label remains for migration compatibility but is unreachable through P0 contracts and UI.
+- [x] [Review][Patch] Canonicalise target and policy identifiers [src/features/curriculum/domain/contracts.ts:8] — IDs now trim and lowercase before accepting only ASCII lowercase letters, digits, and hyphens.
+- [x] [Review][Patch] Make required normalisation and outcome boundaries non-configurable [src/features/curriculum/domain/contracts.ts:11-16; src/features/curriculum/domain/answer-policy.ts:13-18] — Validation requires case-insensitive trimmed matching; teacher review is restricted to explicitly configured `name` and `word` policies.
+- [x] [Review][Patch] Submit conformance vectors compatible with their input kind [src/app/academic-lead/actions.ts:13-15; src/features/curriculum/ui/catalogue-forms.tsx:13] — The action creates only allowed vectors and the UI no longer exposes assignment.
 
 ## Design Notes
 
