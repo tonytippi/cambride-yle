@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
-import { parseServerConfig } from "./src/shared/config/environment";
+import { z } from "zod";
 
-const serverConfig = parseServerConfig(process.env);
+const databaseUrl = z.url().refine((value) => value.startsWith("postgres:") || value.startsWith("postgresql:"), "DATABASE_URL must use a PostgreSQL URL").parse(process.env.DATABASE_URL);
 
 export default defineConfig({
   dialect: "postgresql",
   schema: "./db/schema/*.ts",
   out: "./db/migrations",
-  dbCredentials: { url: serverConfig.DATABASE_URL }
+  dbCredentials: { url: databaseUrl }
 });

@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 import { parseServerConfig } from "./src/shared/config/environment";
 
-parseServerConfig(process.env);
+// Next loads this config for linting too. Production validates its complete runtime
+// configuration at build time; the server module validates it when the app starts.
+if (process.env.NODE_ENV === "production") parseServerConfig(process.env);
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],

@@ -1,17 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-test("base shell is responsive and has visible keyboard focus", async ({ page }) => {
+test("sign-in is responsive and has visible keyboard focus", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/");
   await expect(page.locator(".shell")).toHaveCSS("padding-left", "16px");
   await page.keyboard.press("Tab");
-  const button = page.getByRole("button", { name: "Explore the workspace" });
-  await expect(button).toBeFocused();
-  await expect(button).toHaveCSS("outline-color", "rgb(138, 82, 0)");
+  const email = page.getByRole("textbox", { name: "Email" });
+  await expect(email).toBeFocused();
+  await expect(email).toHaveCSS("outline-color", "rgb(138, 82, 0)");
+  const button = page.getByRole("button", { name: "Sign in" });
   await expect(button).toHaveCSS("min-height", "48px");
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator(".shell")).toHaveCSS("padding-left", "32px");
-  await expect(page.getByRole("heading", { name: "Ready for focused practice" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to practice" })).toBeVisible();
 });
 
 test("server responses apply the security header policy", async ({ request }) => {
