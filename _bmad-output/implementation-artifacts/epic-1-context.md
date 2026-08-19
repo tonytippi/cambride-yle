@@ -4,7 +4,7 @@
 
 ## Goal
 
-Establish the secure, deployable application and centre-managed identity foundation so authorised users can sign in to the correct role-specific experience, learners are confined to their own records, and administrators can safely manage access. This protects child data, enables all later product capabilities to rely on server-enforced authorisation, and preserves operational records when access ends.
+Establish the secure, deployable application and centre-managed identity foundation so authorised users sign in to the correct role-specific experience, learners remain confined to their own records, and administrators can safely manage access. This protects child data, gives all later capabilities a server-enforced authorisation boundary, and preserves operational records when access ends rather than deleting them.
 
 ## Stories
 
@@ -22,6 +22,7 @@ Establish the secure, deployable application and centre-managed identity foundat
 - Account role mutation and deactivation are admin-only transactions. They must leave at least one active admin: return stable `LAST_ACTIVE_ADMIN` without changing state or revoking sessions if the requested change would remove the final active admin.
 - Named, explicitly confirmed deactivation sets `deactivated_at` and `deactivated_by`, revokes active sessions, and blocks future authentication and authorisation. Practice and first-practice records are retained indefinitely; P0 does not delete, purge, or automatically expire accounts or their records. Submitted attempts, snapshots, scores, and audit records remain immutable.
 - Collect only the account profile data needed for centre operations. No speaking recordings or parent/guardian-confirmation workflow are in P0.
+- Production deployment uses HTTPS. The supported experience must remain usable on current and immediately previous stable Safari on iOS, Chrome on Android, and Chrome, Safari, Edge, and Firefox on desktop; optional PWA installation must not block browser use.
 - Meet WCAG 2.2 AA and use British English in technical artefacts and product copy.
 
 ## Technical Decisions
@@ -31,6 +32,7 @@ Establish the secure, deployable application and centre-managed identity foundat
 - Use PostgreSQL as the authoritative store. Persist UTC `timestamptz`; use explicit database enums or check constraints for lifecycle state. Expose opaque UUIDv7 identifiers outside the database. TypeScript uses `camelCase`, database fields use `snake_case`.
 - Route handlers return `{ data }` on success and `{ error: { code, message } }` for expected failure. Use stable machine codes and do not disclose account existence through authentication responses.
 - Structured logs include request ID, actor opaque ID, feature/action, outcome, and error code. Environment variables are parsed at startup and secret configuration remains server-only.
+- The foundation baseline is Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, Drizzle ORM/Kit, Zod, and Argon2. Run reviewed ordered migrations before rollout; production environments have separate databases, storage namespaces, secrets, and PWA cache names from local and staging.
 
 ## UX & Interaction Patterns
 

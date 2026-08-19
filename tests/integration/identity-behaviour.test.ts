@@ -71,6 +71,16 @@ describe("identity I/O matrix without external services", () => {
     expect(outcomes).toEqual(Array(4).fill("We could not sign you in with those details."));
   });
 
+  it("does not turn a post-verification deactivation race into a local sign-in", async () => {
+    dependencies.repository.isThrottled.mockResolvedValue(false);
+    dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "active", passwordHash: "hash" });
+    dependencies.verifyPassword.mockResolvedValue(true);
+    dependencies.repository.createSession.mockRejectedValue(new Error("ACCOUNT_NOT_ACTIVE"));
+    const { signInLocally: realSignInLocally } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    await expect(realSignInLocally(actor.email, "password", "trusted.test")).rejects.toMatchObject({ code: "SIGN_IN_FAILED", message: "We could not sign you in with those details." });
+    expect(dependencies.repository.clearSignInFailures).not.toHaveBeenCalled();
+  });
+
   it("handles a verified Google callback with no-store session response for both admin and learner actors", async () => {
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub", email: "admin@example.test", displayName: "Admin" }); dependencies.signInWithGoogle.mockResolvedValue({ actor: { ...actor, role: "admin" }, token: "admin-session" });
     const admin = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));

@@ -13,5 +13,9 @@ export const createAccountSchema = z.object({
   password: z.string().min(12).max(1024),
   role: z.enum(roles)
 });
+export const deactivateAccountSchema = z.object({
+  accountId: z.string().uuid(),
+  confirmation: z.string().min(1).max(320).refine((value) => value === value.trim())
+});
 
 export const genericSignInError = { code: "SIGN_IN_FAILED", message: "We could not sign you in with those details." };
