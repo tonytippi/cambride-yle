@@ -42,8 +42,8 @@ development_status:
   1-3-deactivate-a-centre-account: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-maintain-curriculum-targets-and-answer-policies: backlog
+  epic-2: in-progress
+  2-1-maintain-curriculum-targets-and-answer-policies: review
   2-2-create-manual-or-ai-content-drafts: backlog
   2-3-validate-review-and-phone-preview-content: backlog
   2-4-publish-immutable-practice-sets: backlog
