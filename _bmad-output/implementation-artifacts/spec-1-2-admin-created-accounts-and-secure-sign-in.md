@@ -20,7 +20,7 @@ context:
 
 ## Ranh giới & Ràng buộc
 
-**Luôn:** Dùng PostgreSQL/Drizzle migration mới cho account, session, audit và throttling; lưu UTC `timestamptz`, UUIDv7 opaque, enum/check lifecycle rõ ràng; đặt feature tại `src/features/identity/{domain,application,infrastructure,ui}` và để route/UI gọi use-case. Email/mật khẩu dùng Argon2id; session chỉ lưu verifier/hash, cookie phải `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, không cache. Google callback chỉ chấp nhận issuer, audience, chữ ký, state/nonce và `email_verified` đã kiểm chứng; không tin email/role từ browser. Chuẩn hoá email trước khi so khớp `ADMIN_EMAILS`; email Google nằm trong danh sách được tạo/nâng thành `admin`, các email Google hợp lệ khác chỉ tạo learner nếu chưa có account. Không cho Google tự thay đổi một vai trò staff/admin đã được admin gán khác, trừ quy tắc `ADMIN_EMAILS` rõ ràng. Tất cả lỗi local unknown/sai/deactivated/throttled dùng một phản hồi chung; áp dụng Argon2 dummy verification khi không có account để tránh enumeration. Mỗi protected read/mutation nhận actor đã xác thực và tự authorise; route trái quyền chuyển về role home cùng thông báo `You do not have access to that page.` Audit mọi tạo/nâng account và thay đổi truy cập với opaque IDs, không chứa secrets, credentials, token hay cookie. Duy trì WCAG 2.2 AA, target 48px, focus hiện rõ và copy sản phẩm British English.
+**Luôn:** Dùng PostgreSQL/Drizzle migration mới cho account, session, audit và throttling; lưu UTC `timestamptz`, UUIDv7 opaque, enum/check lifecycle rõ ràng; đặt feature tại `src/features/identity/{domain,application,infrastructure,ui}` và để route/UI gọi use-case. Email/mật khẩu dùng Argon2id; session chỉ lưu verifier/hash, cookie phải `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, không cache. Session hết hạn hoặc bị revoke phải xoá cookie và yêu cầu user sign in lại. Google callback chỉ chấp nhận issuer, audience, chữ ký, state/nonce và `email_verified` đã kiểm chứng; không tin email/role từ browser. Chuẩn hoá email trước khi so khớp `ADMIN_EMAILS`; email Google nằm trong danh sách được tạo/nâng thành `admin`, các email Google hợp lệ khác chỉ tạo learner nếu chưa có account. Google identity hợp lệ có canonical email trùng account hiện có được link vào account đó; Google subject đã link với account khác phải fail closed. Account deactivated không được đăng nhập bằng local password hoặc Google, và Google callback không được tự reactivate account. Không cho Google tự thay đổi một vai trò staff/admin đã được admin gán khác, trừ quy tắc `ADMIN_EMAILS` rõ ràng. Tất cả lỗi local unknown/sai/deactivated/throttled dùng một phản hồi chung; áp dụng Argon2 dummy verification khi không có account để tránh enumeration. Mỗi protected read/mutation nhận actor đã xác thực và tự authorise; route trái quyền chuyển về role home cùng thông báo `You do not have access to that page.` Audit mọi tạo/nâng account và thay đổi truy cập với opaque IDs, không chứa secrets, credentials, token hay cookie. Duy trì WCAG 2.2 AA, target 48px, focus hiện rõ và copy sản phẩm British English.
 
 **Hỏi trước:** Thay đổi provider OAuth, danh sách Google domains được phép, semantics của `ADMIN_EMAILS`, profile fields ngoài email/display name, cơ chế reset mật khẩu, hoặc bất kỳ public sign-up flow nào.
 
@@ -32,8 +32,9 @@ context:
 |----------|---------------|--------------------|-----------|
 | Local sign-in hợp lệ | Account active, mật khẩu đúng | Tạo session opaque và điều hướng role home | Cookie an toàn, response no-store |
 | Local failure | Email unknown, sai mật khẩu, deactivated, hoặc bị throttle | Cùng status/body/message chung | Dummy hash check; log chỉ code chung |
-| Google admin | Callback OIDC hợp lệ, verified email thuộc `ADMIN_EMAILS` | Tạo hoặc cập nhật account active thành admin, rồi tạo session | Reject callback/state/token không hợp lệ mà không provision |
-| Google learner | Callback OIDC hợp lệ, verified email ngoài `ADMIN_EMAILS`, chưa có account | Tạo learner tối thiểu, audit, tạo session | Không tạo account nếu email không verified |
+| Expired or revoked session | Session cookie không còn hợp lệ | Xoá cookie và điều hướng tới sign-in | Không trả dữ liệu protected |
+| Google admin | Callback OIDC hợp lệ, verified email thuộc `ADMIN_EMAILS` | Tạo hoặc cập nhật account active thành admin, rồi tạo session | Reject callback/state/token không hợp lệ; không reactivate account deactivated |
+| Google learner | Callback OIDC hợp lệ, verified email ngoài `ADMIN_EMAILS` | Link Google identity vào account có canonical email trùng; nếu chưa có account, tạo learner tối thiểu | Không tạo account nếu email không verified; reject Google subject đã link account khác |
 | Protected route | Anonymous hoặc actor thiếu quyền | Anonymous tới sign-in; actor tới own role home với thông báo chuẩn | Không trả dữ liệu protected |
 
 </frozen-after-approval>
@@ -56,15 +57,27 @@ context:
 - [x] `src/app/**`, `src/features/identity/ui/**` -- thêm accessible sign-in, Google start/callback, sign-out, role homes, account-creation admin surface và server-side protected routing.
 - [x] `tests/unit/**`, `tests/integration/**`, `tests/e2e/**` -- kiểm thử matrix, cookie flags, role/routing, migration constraints, audit safety, generic local failures, throttle và responsive keyboard flow.
 
+### Review Findings
+
+- [x] [Review][Patch] Dùng signed one-time token để xoá cookie session invalid, tránh logout-CSRF [src/features/identity/ui/session.ts:10]
+- [x] [Review][Patch] So sánh canonical email ở linked Google identity path [src/features/identity/application/auth.ts:26]
+- [x] [Review][Patch] Canonicalise email trước khi tạo throttle key [src/features/identity/infrastructure/repositories.ts:11]
+- [x] [Review][Patch] Đặt no-store headers cho session-expired response [src/app/api/auth/session-expired/route.ts:5]
+- [x] [Review][Patch] Bổ sung use-case tests cho Google account deactivated và linked Google identity có email khác casing/whitespace [tests/integration/identity-behaviour.test.ts:82]
+- [x] [Review][Patch] Bổ sung assertions cookie flags và no-store cho session-expired response [tests/integration/identity-behaviour.test.ts:112]
+- [x] [Review][Patch] Kiểm thử migration canonical email bằng PostgreSQL thực tế, gồm backfill, unique constraint và canonical duplicates [tests/integration/migration-baseline.test.ts:5]
+- [x] [Review][Defer] Throttle origin đang dùng request Host [src/app/sign-in/actions.ts:16] — deferred, pre-existing; cần thiết kế trusted client/IP throttle key ở deployment boundary.
+- [x] [Review][Defer] Canonical email có thể stale nếu một capability tương lai cập nhật raw email trực tiếp [db/schema/identity.ts:9] — deferred, pre-existing; P0 hiện không có email-update flow, capability đó phải dùng một update path atomic.
+
 **Acceptance Criteria:**
 - Given admin tạo active account với password, when user local-signs in bằng credentials hợp lệ, then server tạo opaque secure cookie session và route role-specific home.
-- Given callback Google được xác minh, when email thuộc `ADMIN_EMAILS`, then account nhận admin access; when email không thuộc danh sách và chưa có account, then chỉ learner account tối thiểu được tạo.
+- Given callback Google được xác minh, when canonical email thuộc `ADMIN_EMAILS`, then account active nhận admin access; when email không thuộc danh sách và đã có account, then Google identity link vào account đó; when chưa có account, then chỉ learner account tối thiểu được tạo.
 - Given callback không hợp lệ, email chưa verified, hoặc protected request không đủ quyền, when request được xử lý, then không provision/expose data và server áp dụng redirect/error chính xác.
 - Given attacker thử credentials hay điều hướng trực tiếp, when account/role/session không hợp lệ, then generic failure/throttling hoặc server-side denial ngăn truy cập mà không leak account existence.
 
 ## Design Notes
 
-Google provisioning là ngoại lệ có chủ đích từ user với “admin-created accounts”: nó không phải public form sign-up và chỉ nhận identity đã xác thực từ Google. Cần giữ account source/linked Google subject độc lập với email để ngăn account-linking bằng email claim giả; identity collision và privilege conflict phải fail closed hoặc cần admin xử lý, không overwrite account silently.
+Google provisioning là ngoại lệ có chủ đích từ user với “admin-created accounts”: nó không phải public form sign-up và chỉ nhận identity đã xác thực từ Google. Canonical verified email là khoá link Google identity với account hiện có; account source và linked Google subject vẫn độc lập với email. Identity collision, gồm Google subject đã link account khác, phải fail closed; không overwrite account silently.
 
 ## Verification
 

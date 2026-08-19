@@ -32,6 +32,7 @@ vi.mock("@/infrastructure/database/client", () => ({ database: { transaction: de
 import { signInAction } from "@/app/sign-in/actions";
 import { GET as googleCallback } from "@/app/api/auth/google/callback/route";
 import { POST as signOut } from "@/app/api/auth/sign-out/route";
+import { GET as sessionExpired } from "@/app/api/auth/session-expired/route";
 import { IdentityError } from "@/features/identity/application/auth";
 
 const form = (email = "learner@example.test", password = "correct-password") => { const data = new FormData(); data.set("email", email); data.set("password", password); return data; };
@@ -89,6 +90,28 @@ describe("identity I/O matrix without external services", () => {
     expect(learner.actor.role).toBe("learner"); expect(dependencies.repository.createAccount).toHaveBeenLastCalledWith(expect.objectContaining({ role: "learner" }), undefined, expect.anything()); expect(dependencies.repository.auditOidcProvisioning).toHaveBeenCalledWith("new-learner", expect.anything());
   });
 
+  it("links a verified Google identity to an active existing teacher without changing their role", async () => {
+    const teacher = { ...actor, id: "existing-teacher", email: "teacher@example.test", role: "teacher" as const, status: "active" };
+    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValue(teacher); dependencies.repository.createSession.mockResolvedValue("session");
+    const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    const result = await realSignInWithGoogle({ subject: "teacher-sub", email: "teacher@example.test", displayName: "Teacher" }, ["admin@example.test"]);
+    expect(result.actor.role).toBe("teacher"); expect(dependencies.repository.linkGoogleIdentity).toHaveBeenCalledWith("teacher-sub", "existing-teacher", expect.anything()); expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled();
+  });
+
+  it("accepts a previously linked Google identity when its verified email differs only by presentation", async () => {
+    const account = { ...actor, email: "Teacher@Example.Test", status: "active" };
+    dependencies.repository.getGoogleIdentity.mockResolvedValue({ accountId: actor.id }); dependencies.selectAccount = account; dependencies.repository.createSession.mockResolvedValue("session");
+    const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    await expect(realSignInWithGoogle({ subject: "teacher-sub", email: " teacher@example.test ", displayName: "Teacher" }, [])).resolves.toMatchObject({ actor: { id: actor.id } });
+  });
+
+  it("rejects deactivated Google accounts without promoting or creating a session", async () => {
+    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "deactivated" });
+    const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    await expect(realSignInWithGoogle({ subject: "deactivated-sub", email: "learner@example.test", displayName: "Learner" }, ["learner@example.test"])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
+    expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled(); expect(dependencies.repository.createSession).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid state, invalid token, and unverified identities without provisioning", async () => {
     const invalidState = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=missing&code=code")); expect(invalidState.headers.get("location")).toContain("/sign-in?error=google");
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockRejectedValue(new Error("unverified"));
@@ -99,5 +122,18 @@ describe("identity I/O matrix without external services", () => {
   it("signs out with 303, clears the cookie, and revokes its server session", async () => {
     dependencies.cookieJar.values.set("cambridgeyle_session", "opaque-session-token"); const response = await signOut(new Request("http://app.test/api/auth/sign-out", { method: "POST" }) as never);
     expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("http://app.test/sign-in"); expect(dependencies.repository.revokeSession).toHaveBeenCalledWith("opaque-session-token"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; ");
+  });
+
+  it("clears an invalid session cookie before redirecting to sign-in", async () => {
+    dependencies.cookieJar.values.set("cambridgeyle_session", "invalid-session");
+    const { createSessionCleanupToken } = await import("@/features/identity/infrastructure/session-cleanup");
+    const response = await sessionExpired(nextRequest(`http://app.test/api/auth/session-expired?token=${createSessionCleanupToken("invalid-session")}`));
+    expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("http://app.test/sign-in"); expect(response.headers.get("cache-control")).toBe("no-store, max-age=0"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; "); expect(response.headers.get("set-cookie")).toContain("HttpOnly"); expect(response.headers.get("set-cookie")).toContain("Secure"); expect(response.headers.get("set-cookie")).toMatch(/SameSite=lax/i);
+  });
+
+  it("does not clear a session cookie when its cleanup token is invalid", async () => {
+    dependencies.cookieJar.values.set("cambridgeyle_session", "invalid-session");
+    const response = await sessionExpired(nextRequest("http://app.test/api/auth/session-expired?token=invalid"));
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 });

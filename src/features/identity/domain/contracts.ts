@@ -4,7 +4,8 @@ export const roles = ["learner", "teacher", "academic_lead", "admin"] as const;
 export type Role = (typeof roles)[number];
 export type Actor = { id: string; role: Role; email: string; displayName: string };
 
-const emailSchema = z.string().trim().pipe(z.email()).transform((value) => value.toLowerCase());
+export const canonicalEmail = (email: string) => email.trim().toLowerCase();
+const emailSchema = z.string().trim().pipe(z.email()).transform(canonicalEmail);
 export const localSignInSchema = z.object({ email: emailSchema, password: z.string().min(1).max(1024) });
 export const createAccountSchema = z.object({
   email: emailSchema,

@@ -7,6 +7,7 @@ export const accountStatus = pgEnum("account_status", ["active", "deactivated"])
 export const accounts = pgTable("accounts", {
   id: uuid("id").primaryKey(),
   email: text("email").notNull().unique(),
+  canonicalEmail: text("canonical_email").notNull().unique(),
   displayName: text("display_name").notNull(),
   role: accountRole("role").notNull(),
   status: accountStatus("status").notNull().default("active"),
