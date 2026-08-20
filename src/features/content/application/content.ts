@@ -83,7 +83,7 @@ type ReadinessCandidate = {
     estimatedDurationSeconds: string;
   };
   media: { mediaType: string; status: string } | null;
-  guidance: { topic: string; taskFormat: string };
+  guidance: { id: string; topic: string; taskFormat: string };
 };
 type ReadinessQuestion = Omit<ReadinessCandidate["question"], "estimatedDurationSeconds" | "supportingTargetIds" | "topicIds"> & {
   estimatedDurationSeconds: number;
@@ -91,26 +91,27 @@ type ReadinessQuestion = Omit<ReadinessCandidate["question"], "estimatedDuration
   topicIds: string[];
   topic: string;
   taskType: string;
+  guidanceId: string;
   media: { mediaType: string; status: string }[];
   mediaEligible: boolean;
 };
 const audioEngines = new Set(["audio_picture_choice", "audio_note_taking"]);
-const compositionFor = (questions: ReadinessQuestion[], requiredId: string) => {
-  let result: ReadinessQuestion[] | undefined;
-  const visit = (start: number, chosen: ReadinessQuestion[], duration: number, objectives: Set<string>) => {
-    if (result || duration > 600 || objectives.size > 2) return;
-    if (chosen.some((question) => question.id === requiredId) && duration >= 300) {
-      result = chosen;
-      return;
+const compositionFor = (questions: ReadinessQuestion[], limitObjectives: boolean) => {
+  const states = new Map<string, ReadinessQuestion[]>();
+  states.set("0:", []);
+  for (const question of questions) {
+    for (const chosen of [...states.values()]) {
+      const duration = chosen.reduce((total, item) => total + item.estimatedDurationSeconds, 0) + question.estimatedDurationSeconds;
+      const objectives = [...new Set([...chosen.map((item) => item.primaryTargetId), question.primaryTargetId])].sort();
+      if (duration > 600 || (limitObjectives && objectives.length > 2)) continue;
+      const key = `${duration}:${objectives.join(",")}`;
+      if (!states.has(key)) states.set(key, [...chosen, question]);
     }
-    for (let index = start; index < questions.length; index += 1) {
-      const question = questions[index]!;
-      const nextObjectives = new Set(objectives).add(question.primaryTargetId);
-      visit(index + 1, [...chosen, question], duration + question.estimatedDurationSeconds, nextObjectives);
-    }
-  };
-  visit(0, [], 0, new Set());
-  return result;
+  }
+  return [...states.values()].find((chosen) => {
+    const duration = chosen.reduce((total, item) => total + item.estimatedDurationSeconds, 0);
+    return duration >= 300 && duration <= 600;
+  });
 };
 export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
   const questions = new Map<string, ReadinessQuestion>();
@@ -120,6 +121,7 @@ export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
       estimatedDurationSeconds: Number(question.estimatedDurationSeconds),
       supportingTargetIds: question.supportingTargetIds as string[],
       topicIds: question.topicIds as string[],
+      guidanceId: guidance.id,
       topic: guidance.topic,
       taskType: guidance.taskFormat,
       media: [],
@@ -132,31 +134,41 @@ export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
     question.mediaEligible = question.media.every((media) => media.status === "published") &&
       (!audioEngines.has(question.engine) || question.media.some((media) => media.mediaType === "audio" && media.status === "published"));
   const all = [...questions.values()];
-  const coverage = all.map((question) => {
-    const pool = all.filter((candidate) => candidate.mediaEligible && candidate.paper === question.paper && candidate.part === question.part && candidate.engine === question.engine && candidate.topic === question.topic && candidate.taskType === question.taskType);
-    const proof = question.mediaEligible ? compositionFor(pool, question.id) : undefined;
-    const hasAudio = question.media.some((media) => media.mediaType === "audio");
-    const gaps = question.mediaEligible
-      ? proof ? [] : ["NO_300_600_COMPOSITION"]
-      : audioEngines.has(question.engine) && !hasAudio
-        ? ["AUDIO_MEDIA_REQUIRED"]
-        : ["ASSOCIATED_MEDIA_NOT_PUBLISHED"];
+  const groups = new Map<string, ReadinessQuestion[]>();
+  for (const question of all) {
+    const key = `${question.engine}:${question.paper}:${question.part}:${question.guidanceId}`;
+    groups.set(key, [...(groups.get(key) ?? []), question]);
+  }
+  const coverage = [...groups.values()].map((group) => {
+    const [question] = group;
+    const pool = group.filter((candidate) => candidate.mediaEligible);
+    const proof = compositionFor(pool, true);
+    const durationProof = proof ? undefined : compositionFor(pool, false);
+    const missingAudio = audioEngines.has(question.engine) && group.some((candidate) => !candidate.media.some((media) => media.mediaType === "audio" && media.status === "published"));
+    const unpublishedMedia = group.some((candidate) => candidate.media.some((media) => media.status !== "published"));
+    const totalDuration = pool.reduce((total, candidate) => total + candidate.estimatedDurationSeconds, 0);
+    const gaps = [
+      ...(missingAudio ? ["AUDIO_MEDIA_REQUIRED"] : []),
+      ...(!missingAudio && unpublishedMedia ? ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] : []),
+      ...(!proof && pool.length ? durationProof ? ["PRIMARY_OBJECTIVES_INVALID"] : [totalDuration < 300 ? "DURATION_TOO_SHORT" : "DURATION_OUT_OF_RANGE"] : []),
+      ...(!pool.length && !missingAudio && !unpublishedMedia ? ["NO_ELIGIBLE_QUESTION"] : []),
+    ];
     return {
-      questionId: question.id,
       engine: question.engine,
       paper: question.paper,
       part: question.part,
+      guidanceId: question.guidanceId,
       topic: question.topic,
       taskType: question.taskType,
-      vocabularyGrammarTargets: [question.primaryTargetId, ...question.supportingTargetIds],
-      topicTargetIds: question.topicIds,
-      estimatedDurationSeconds: question.estimatedDurationSeconds,
-      mediaEligible: question.mediaEligible,
+      vocabularyGrammarTargets: [...new Set(group.flatMap((candidate) => [candidate.primaryTargetId, ...candidate.supportingTargetIds]))],
+      topicTargetIds: [...new Set(group.flatMap((candidate) => candidate.topicIds))],
+      estimatedDurationSeconds: group.reduce((total, candidate) => total + candidate.estimatedDurationSeconds, 0),
+      mediaEligible: pool.length === group.length,
       composition: proof && { questionIds: proof.map((item) => item.id), durationSeconds: proof.reduce((total, item) => total + item.estimatedDurationSeconds, 0), primaryTargetIds: [...new Set(proof.map((item) => item.primaryTargetId))] },
       gaps,
     };
   });
-  return { coverage, engines: (awaitableEngines as readonly string[]).map((engine) => ({ engine, covered: coverage.some((item) => item.engine === engine), gaps: coverage.some((item) => item.engine === engine) ? [] : ["NO_PUBLISHED_QUESTION"] })) };
+  return { coverage, engines: (awaitableEngines as readonly string[]).map((engine) => ({ engine, covered: coverage.some((item) => item.engine === engine && item.composition), gaps: coverage.some((item) => item.engine === engine && item.composition) ? [] : coverage.some((item) => item.engine === engine) ? ["NO_COMPOSABLE_TOPIC_TASK_TYPE"] : ["NO_PUBLISHED_QUESTION"] })) };
 };
 const awaitableEngines = ["picture_true_false", "picture_yes_no", "audio_picture_choice", "audio_note_taking", "word_bank_cloze"] as const;
 export async function getContentReadiness(actor: Actor) {

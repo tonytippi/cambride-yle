@@ -2,7 +2,7 @@
 title: 'Story 2.5: Verify Pilot Content Readiness'
 type: 'feature'
 created: '2026-08-19'
-status: 'blocked'
+status: 'done'
 baseline_commit: '4c3eaa80a36b2f71f6a1aa8b62485585b93ebb59'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -24,9 +24,9 @@ deferred: []
 
 **Always:** Permit only `academic_lead` and admin. Read approved and published content without mutation, but base composability on currently published question/media versions. Cover exactly the five P0 engines, paper/part, topic, controlled vocabulary/grammar target, essential-media availability, and estimated duration. A ready result requires a varied candidate composition that uses one paper/part, totals 300-600 seconds, and has one or two primary objectives; never infer readiness from aggregate item count. Audio engines require associated published audio media. Use server-authoritative authorisation and British English UI copy.
 
-**Block If:** The existing persisted data cannot identify the topic/task type or media association needed to evaluate a requirement, or a new product definition of “varied” is necessary beyond the available distinct question candidates and existing one/two-objective composition rule.
+**Block If:** The persisted data cannot identify the topic/task type needed to evaluate a requirement, or a new product definition of “varied” is necessary beyond the available distinct question candidates and existing one/two-objective composition rule. A versioned current question-to-media association is an approved prerequisite for this story and must be introduced through a reviewed migration before readiness evaluation.
 
-**Never:** Do not add migrations, lifecycle mutations, a new route, teacher/learner functionality, public curriculum claims, content upload/storage behaviour, engines, or a synthetic readiness score. Do not treat approved-only versions as publishable learner content or expose protected/learner data.
+**Never:** Do not add lifecycle mutations beyond the approved versioned question-to-media association prerequisite, a new route, teacher/learner functionality, public curriculum claims, content upload/storage behaviour, engines, or a synthetic readiness score. Do not treat approved-only versions as publishable learner content or expose protected/learner data.
 
 ## I/O & Edge-Case Matrix
 
@@ -103,3 +103,16 @@ Verification performed before the review block:
 - `npm test -- tests/unit/content-application.test.ts tests/unit/content-ui.test.ts` passed: 38 tests.
 - `npm run build` passed.
 - `git diff --check` passed.
+
+### Review Findings
+
+- [x] [Review][Decision] Resolve the prohibited association migration — resolved 2026-08-20: the Story 2.5 contract formally authorises a reviewed versioned question-to-media association migration as a required prerequisite for readiness evaluation.
+- [x] [Review][Patch] Name the actual failed composition constraint [`src/features/content/application/content.ts:135`] — resolved with distinct duration and primary-objective gap codes.
+- [x] [Review][Patch] Report unpublished or retired audio as an essential-audio gap [`src/features/content/application/content.ts:131`] — resolved with `AUDIO_MEDIA_REQUIRED` whenever no published associated audio exists.
+- [x] [Review][Patch] Aggregate readiness coverage by published topic/task-type choice rather than individual question [`src/features/content/application/content.ts:135`] — resolved by stable controlled-guidance grouping.
+- [x] [Review][Patch] Bound the readiness composition search to avoid exponential workspace rendering [`src/features/content/application/content.ts:98`] — resolved with a duration/objective state map capped at the 600-second publication limit.
+- [x] [Review][Patch] Use the required Pilot content readiness section heading [`src/app/academic-lead/page.tsx:203`] — resolved.
+
+### Review Resolution
+
+2026-08-20: All five patch findings were applied and verified with `npm run lint`, `npm run typecheck`, `npm test -- tests/unit/content-application.test.ts tests/unit/content-ui.test.ts` (44 tests), `npm run build`, and `git diff --check`.

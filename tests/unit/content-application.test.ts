@@ -167,33 +167,45 @@ describe("content draft use cases", () => {
   });
   it("proves a same-paper-part composition per topic and task type from current published associations", () => {
     const candidates = [
-      { question: { id: "question-1", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: ["grammar-1"], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
-      { question: { id: "question-2", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
-      { question: { id: "question-3", engine: "audio_note_taking", paper: "listening", part: "2", primaryTargetId: "target-2", supportingTargetIds: [], topicIds: ["topic-2"], estimatedDurationSeconds: "300" }, guidance: { topic: "School", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } },
+      { question: { id: "question-1", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: ["grammar-1"], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
+      { question: { id: "question-2", engine: "audio_picture_choice", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Audio picture choice" }, media: { mediaType: "audio", status: "published" } },
+      { question: { id: "question-3", engine: "audio_note_taking", paper: "listening", part: "2", primaryTargetId: "target-2", supportingTargetIds: [], topicIds: ["topic-2"], estimatedDurationSeconds: "300" }, guidance: { id: "guidance-2", topic: "School", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } },
     ] as never;
     const readiness = buildContentReadiness(candidates);
     expect(readiness.coverage).toEqual(expect.arrayContaining([
-      expect.objectContaining({ questionId: "question-1", topic: "Animals", taskType: "Audio picture choice", mediaEligible: true, composition: expect.objectContaining({ durationSeconds: 300, primaryTargetIds: ["target-1"] }), gaps: [] }),
-      expect.objectContaining({ questionId: "question-3", mediaEligible: false, gaps: ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] }),
+      expect.objectContaining({ topic: "Animals", taskType: "Audio picture choice", mediaEligible: true, composition: expect.objectContaining({ durationSeconds: 300, primaryTargetIds: ["target-1"] }), gaps: [] }),
+      expect.objectContaining({ topic: "School", mediaEligible: false, gaps: ["AUDIO_MEDIA_REQUIRED"] }),
     ]));
     expect(readiness.engines).toEqual(expect.arrayContaining([
       expect.objectContaining({ engine: "picture_yes_no", covered: false, gaps: ["NO_PUBLISHED_QUESTION"] }),
     ]));
   });
   it("does not use another topic, task type, or engine to prove a composition", () => {
-    const candidate = (id: string, topic: string, taskFormat: string, engine = "picture_true_false") => ({ question: { id, engine, paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { topic, taskFormat }, media: null });
+    const candidate = (id: string, topic: string, taskFormat: string, engine = "picture_true_false") => ({ question: { id, engine, paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "180" }, guidance: { id: `${topic}-${taskFormat}-${engine}`, topic, taskFormat }, media: null });
     const readiness = buildContentReadiness([candidate("same", "Animals", "Picture true false"), candidate("other-topic", "Food", "Picture true false"), candidate("other-task", "Animals", "Picture yes no"), candidate("other-engine", "Animals", "Picture true false", "picture_yes_no")] as never);
-    expect(readiness.coverage.find((item) => item.questionId === "same")).toMatchObject({ gaps: ["NO_300_600_COMPOSITION"] });
+    expect(readiness.coverage.find((item) => item.topic === "Animals" && item.taskType === "Picture true false")).toMatchObject({ gaps: ["DURATION_TOO_SHORT"] });
   });
   it("flags a current-media-eligible topic/task type with no valid composition", () => {
-    const readiness = buildContentReadiness([{ question: { id: "question-1", engine: "picture_true_false", paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { topic: "Animals", taskFormat: "Picture true false" }, media: null }] as never);
-    expect(readiness.coverage[0]).toMatchObject({ mediaEligible: true, composition: undefined, gaps: ["NO_300_600_COMPOSITION"] });
+    const readiness = buildContentReadiness([{ question: { id: "question-1", engine: "picture_true_false", paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "120" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Picture true false" }, media: null }] as never);
+    expect(readiness.coverage[0]).toMatchObject({ mediaEligible: true, composition: undefined, gaps: ["DURATION_TOO_SHORT"] });
+  });
+  it("aggregates each controlled guidance choice and names an objective gap", () => {
+    const candidate = (id: string, guidanceId: string, target: string, duration: string) => ({ question: { id, engine: "picture_true_false", paper: "reading_writing", part: "1", primaryTargetId: target, supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: duration }, guidance: { id: guidanceId, topic: "Animals", taskFormat: "Picture true false" }, media: null });
+    const readiness = buildContentReadiness([
+      candidate("question-1", "guidance-1", "target-1", "100"),
+      candidate("question-2", "guidance-1", "target-2", "100"),
+      candidate("question-3", "guidance-1", "target-3", "100"),
+      candidate("question-4", "guidance-2", "target-1", "300"),
+    ] as never);
+    expect(readiness.coverage).toHaveLength(2);
+    expect(readiness.coverage.find((item) => item.guidanceId === "guidance-1")).toMatchObject({ gaps: ["PRIMARY_OBJECTIVES_INVALID"] });
+    expect(readiness.coverage.find((item) => item.guidanceId === "guidance-2")).toMatchObject({ composition: expect.objectContaining({ durationSeconds: 300 }), gaps: [] });
   });
   it("authorises readiness before reading candidates and excludes current retired media", async () => {
     await expect(getContentReadiness(teacher)).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(dependencies.getReadinessCandidates).not.toHaveBeenCalled();
-    dependencies.getReadinessCandidates.mockResolvedValue([{ question: { id: "question-1", engine: "audio_note_taking", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "300" }, guidance: { topic: "Animals", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } }]);
-    await expect(getContentReadiness(lead)).resolves.toMatchObject({ coverage: [expect.objectContaining({ mediaEligible: false, gaps: ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] })] });
+    dependencies.getReadinessCandidates.mockResolvedValue([{ question: { id: "question-1", engine: "audio_note_taking", paper: "listening", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "300" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Audio note taking" }, media: { mediaType: "audio", status: "retired" } }]);
+    await expect(getContentReadiness(lead)).resolves.toMatchObject({ coverage: [expect.objectContaining({ mediaEligible: false, gaps: ["AUDIO_MEDIA_REQUIRED"] })] });
   });
   it("denies a teacher before any content or audit mutation", async () => {
     await expect(createManualQuestion(teacher, input)).rejects.toMatchObject({

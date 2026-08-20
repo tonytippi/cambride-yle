@@ -200,7 +200,7 @@ export default async function AcademicLeadHome() {
           questions={publishedQuestions}
           media={publishedMedia}
         />
-        <h2>Content readiness</h2>
+        <h2>Pilot content readiness</h2>
         <ReadinessReport readiness={readiness} targetLabels={targetLabels} />
         <h2>Practice sets</h2>
         <div className="account-list">
