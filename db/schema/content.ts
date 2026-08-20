@@ -225,6 +225,7 @@ export const practiceSets = pgTable(
   {
     id: uuid("id").primaryKey(),
     status: practiceSetStatus("status").notNull().default("published"),
+    title: text("title").notNull(),
     paper: curriculumPaper("paper").notNull(),
     part: text("part").notNull(),
     estimatedDurationSeconds: integer("estimated_duration_seconds").notNull(),
@@ -238,6 +239,7 @@ export const practiceSets = pgTable(
   },
   (table) => [
     check("practice_sets_part_check", sql`${table.part} ~ '^[1-5]$'`),
+    check("practice_sets_title_check", sql`${table.title} = btrim(${table.title}) AND length(${table.title}) BETWEEN 1 AND 120`),
     check(
       "practice_sets_duration_check",
       sql`${table.estimatedDurationSeconds} BETWEEN 300 AND 600`,

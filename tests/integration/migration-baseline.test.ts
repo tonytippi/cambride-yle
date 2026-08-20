@@ -69,6 +69,10 @@ describe("migration baseline", () => {
       "db/migrations/0016_question_version_media.sql",
       "utf8",
     );
+    const learnerPracticeMigration = await readFile(
+      "db/migrations/0017_learner_practice_selection.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -206,6 +210,14 @@ describe("migration baseline", () => {
     expect(questionMediaMigration).toContain(
       "QUESTION_MEDIA_ASSOCIATION_IMMUTABLE",
     );
+    expect(journal).toContain("0017_learner_practice_selection");
+    expect(learnerPracticeMigration).toContain('CREATE TABLE "practice_attempts"');
+    expect(learnerPracticeMigration).toContain('CREATE TABLE "practice_attempt_evidence"');
+    expect(learnerPracticeMigration).toContain('CREATE TABLE "practice_recommendation_audits"');
+    expect(learnerPracticeMigration).toContain("practice_sets_title_check");
+    expect(learnerPracticeMigration).toContain("practice_attempts_id_set_unique");
+    expect(learnerPracticeMigration).toContain("practice_attempt_evidence_attempt_set_fk");
+    expect(learnerPracticeMigration).toContain("PRACTICE_ATTEMPT_EVIDENCE_REQUIRES_SUBMITTED_ATTEMPT");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {

@@ -456,6 +456,7 @@ export async function createPublishedPracticeSet(
     questions: Awaited<ReturnType<typeof getQuestions>>;
     mediaByQuestion: Map<string, Awaited<ReturnType<typeof getMediaVersions>>>;
     actorId: string;
+    title: string;
   },
   db: Database,
 ) {
@@ -467,6 +468,7 @@ export async function createPublishedPracticeSet(
   );
   await db.insert(practiceSets).values({
     id,
+    title: input.title,
     paper: questions[0]!.paper,
     part: questions[0]!.part,
     estimatedDurationSeconds: duration,

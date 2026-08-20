@@ -789,6 +789,7 @@ export async function publishPracticeSet(
         questions,
         mediaByQuestion,
         actorId: actor.id,
+        title: valid.title,
       },
       tx,
     );

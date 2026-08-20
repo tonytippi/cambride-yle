@@ -58,6 +58,7 @@ export const workflowInputSchema = z.object({ kind: contentKindSchema, targetId:
 export const reasonInputSchema = workflowInputSchema.extend({ reason: plainText(2000) }).strict();
 export const phonePreviewInputSchema = workflowInputSchema.extend({ viewportWidth: z.literal(375), successful: z.literal(true) }).strict();
 export const composePracticeSetSchema = z.object({
+  title: plainText(120),
   questionIds: z.array(id).min(1).max(20),
 }).strict();
 export const practiceSetWorkflowSchema = z.object({ practiceSetId: id }).strict();

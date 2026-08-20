@@ -446,6 +446,10 @@ export function PracticeSetComposer({
         have one paper/part and one or two objectives.
       </p>
       <label>
+        Learner-facing title
+        <input name="title" maxLength={120} required />
+      </label>
+      <label>
         Question IDs, comma separated
         <textarea name="questionIds" required />
       </label>

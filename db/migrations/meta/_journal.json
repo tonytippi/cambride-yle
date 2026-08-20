@@ -120,6 +120,13 @@
       "when": 1788307200000,
       "tag": "0016_question_version_media",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788393600000,
+      "tag": "0017_learner_practice_selection",
+      "breakpoints": true
     }
   ]
 }

@@ -871,6 +871,7 @@ describe("content draft use cases", () => {
     dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     await expect(
       publishPracticeSet(lead, {
+        title: "Animal picture practice",
         questionIds: ["018f0000-0000-7000-8000-000000000009"],
       }),
     ).rejects.toMatchObject({
@@ -879,6 +880,10 @@ describe("content draft use cases", () => {
         expect.objectContaining({ code: "DURATION_OUT_OF_RANGE" }),
       ]),
     });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
+  it("requires a concise learner-facing title before materialising a set", async () => {
+    await expect(publishPracticeSet(lead, { title: "", questionIds: ["018f0000-0000-7000-8000-000000000009"] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
   it("returns stored-association audio findings without materialising a set", async () => {
@@ -896,6 +901,7 @@ describe("content draft use cases", () => {
     dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
     await expect(
       publishPracticeSet(lead, {
+        title: "Animal picture practice",
         questionIds: [questionId],
       }),
     ).rejects.toMatchObject({
@@ -908,7 +914,7 @@ describe("content draft use cases", () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
     dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_note_taking", part: "1", estimatedDurationSeconds: "300" }]);
     dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
-    await expect(publishPracticeSet(lead, { questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
+    await expect(publishPracticeSet(lead, { title: "Animal audio practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
   it("publishes a valid set and snapshots an optional post-submission hint", async () => {
@@ -926,8 +932,8 @@ describe("content draft use cases", () => {
     dependencies.createPublishedPracticeSet.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000014",
     );
-    await expect(publishPracticeSet(lead, { questionIds: [questionId] })).resolves.toBe("018f0000-0000-7000-8000-000000000014");
-    expect(dependencies.createPublishedPracticeSet).toHaveBeenCalledWith(expect.objectContaining({ questions: [question], actorId: lead.id }), { transaction: "boundary" });
+    await expect(publishPracticeSet(lead, { title: "Animal picture practice", questionIds: [questionId] })).resolves.toBe("018f0000-0000-7000-8000-000000000014");
+    expect(dependencies.createPublishedPracticeSet).toHaveBeenCalledWith(expect.objectContaining({ title: "Animal picture practice", questions: [question], actorId: lead.id }), { transaction: "boundary" });
     expect(dependencies.lockQuestionMediaEntries).toHaveBeenCalledWith([questionId], { transaction: "boundary" });
     expect(dependencies.recordPracticeSetAudit).toHaveBeenCalledWith("PRACTICE_SET_PUBLISHED", "018f0000-0000-7000-8000-000000000014", lead.id, { transaction: "boundary" });
   });
