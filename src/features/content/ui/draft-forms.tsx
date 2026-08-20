@@ -218,11 +218,12 @@ export function ContentDraftForms({
   questionAction,
   mediaAction,
   aiAction,
+  aiEnabled,
   ...shared
-}: Shared & { questionAction: Action; mediaAction: Action; aiAction: Action }) {
+}: Shared & { questionAction: Action; mediaAction: Action; aiAction: Action; aiEnabled: boolean }) {
   const references = (
     <label>
-      Permitted references, one per line as ID | description
+      Permitted controlled target IDs, one per line
       <textarea name="permittedReferences" />
     </label>
   );
@@ -234,6 +235,7 @@ export function ContentDraftForms({
         action={questionAction}
       >
         <p>Every saved record remains a draft for later academic review.</p>
+        <label>Source question draft ID to revise (optional)<input name="sourceId" /></label>
         <SharedFields {...shared} />
         <QuestionFields policies={shared.policies} media={shared.media} />
       </Form>
@@ -243,10 +245,11 @@ export function ContentDraftForms({
         action={mediaAction}
       >
         <p>Every saved record remains a draft for later academic review.</p>
+        <label>Source media draft ID to revise (optional)<input name="sourceId" /></label>
         <SharedFields {...shared} />
         <MediaFields />
       </Form>
-      <Form
+      {aiEnabled ? <Form
         title="Request AI text draft"
         pendingLabel="Requesting text draft..."
         action={aiAction}
@@ -264,8 +267,8 @@ export function ContentDraftForms({
           Staff prompt
           <textarea name="staffPrompt" required />
         </label>
-      </Form>
-      <Form
+      </Form> : <p className="notice">AI draft generation is unavailable until the provider gate is closed.</p>}
+      {aiEnabled && <Form
         title="Request AI image draft"
         pendingLabel="Requesting image draft..."
         action={aiAction}
@@ -283,7 +286,7 @@ export function ContentDraftForms({
           Staff prompt
           <textarea name="staffPrompt" required />
         </label>
-      </Form>
+      </Form>}
     </div>
   );
 }

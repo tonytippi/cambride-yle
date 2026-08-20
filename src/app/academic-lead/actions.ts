@@ -10,7 +10,7 @@ import {
 } from "@/features/curriculum/application/curriculum";
 import { currentActor } from "@/features/identity/ui/session";
 import type { AnswerValue } from "@/features/curriculum/domain/contracts";
-import { acceptException, approveContent, createManualMedia, createManualQuestion, publishContent, publishPracticeSet, recordPhonePreview, rejectContent, requestAiDraft, retireContent, retirePracticeSet, submitForReview, validateContent } from "@/features/content/application/content";
+import { acceptException, approveContent, createManualMedia, createManualQuestion, publishContent, publishPracticeSet, recordPhonePreview, rejectContent, requestAiDraft, retireContent, retirePracticeSet, reviseMedia, reviseQuestion, submitForReview, validateContent } from "@/features/content/application/content";
 export type CurriculumActionState = {
   error?: {
     code: string;
@@ -234,16 +234,20 @@ export async function createPolicyAction(
 }
 export async function createQuestionDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> {
   try {
-    await createManualQuestion(await actorFor(), {
+    const actor = await actorFor();
+    const sourceId = String(formData.get("sourceId") || "") || undefined;
+    const draft = {
       ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((option) => option.trim()).filter(Boolean), postSubmitHint: hint(formData), mediaIds: mediaIds(formData),
-    });
-    revalidatePath("/academic-lead"); return { success: "Question draft saved for academic review." };
+    };
+    if (sourceId) await reviseQuestion(actor, sourceId, draft);
+    else await createManualQuestion(actor, draft);
+    revalidatePath("/academic-lead"); return { success: sourceId ? "Question draft revision saved for academic review." : "Question draft saved for academic review." };
   } catch (error) { return failure(error, "CONTENT_DRAFT_SAVE_FAILED"); }
 }
 const contentBase = (formData: FormData) => ({ paper: String(formData.get("paper")) as "listening", part: Number(formData.get("part")), engine: String(formData.get("engine")) as "picture_true_false", primaryTargetId: String(formData.get("primaryTargetId")), supportingTargetIds: String(formData.get("supportingTargetIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean), topicIds: [String(formData.get("topicId"))], guidanceId: String(formData.get("guidanceId")), estimatedDurationSeconds: Number(formData.get("estimatedDurationSeconds")), accessibilityMetadata: { altText: String(formData.get("altText")) }, provenance: { source: String(formData.get("source")), rightsReference: String(formData.get("rightsReference")) } });
 const hint = (formData: FormData) => { const message = String(formData.get("postSubmitHint") ?? "").trim(); return message ? { locale: "en-GB" as const, message } : undefined; };
 const mediaIds = (formData: FormData) => formData.getAll("mediaIds").flatMap((value) => String(value).split(/[\s,]+/)).map((id) => id.trim()).filter(Boolean);
-export async function createMediaDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await createManualMedia(await actorFor(), { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }); revalidatePath("/academic-lead"); return { success: "Media draft saved for academic review." }; } catch (error) { return failure(error, "MEDIA_DRAFT_SAVE_FAILED"); } }
+export async function createMediaDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const actor = await actorFor(); const sourceId = String(formData.get("sourceId") || "") || undefined; const draft = { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; if (sourceId) await reviseMedia(actor, sourceId, draft); else await createManualMedia(actor, draft); revalidatePath("/academic-lead"); return { success: sourceId ? "Media draft revision saved for academic review." : "Media draft saved for academic review." }; } catch (error) { return failure(error, "MEDIA_DRAFT_SAVE_FAILED"); } }
 export async function requestAiDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const draft = formData.get("draftType") === "question" ? { ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((value) => value.trim()).filter(Boolean), postSubmitHint: hint(formData), mediaIds: mediaIds(formData) } : { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const permittedReferences = String(formData.get("permittedReferences") ?? "").split("\n").map((line) => line.trim()).filter(Boolean).map((line) => { const [id, ...description] = line.split("|"); return { id: id!.trim(), description: description.join("|").trim() }; }); const sourceId = String(formData.get("sourceId") || "") || undefined; await requestAiDraft(await actorFor(), { kind: String(formData.get("kind")) as "text", staffPrompt: String(formData.get("staffPrompt")), permittedReferences, draft } as never, sourceId); revalidatePath("/academic-lead"); return { success: sourceId ? "AI draft rerun saved for academic review." : "Generated draft saved for academic review." }; } catch (error) { return failure(error, "AI_DRAFT_REQUEST_FAILED"); } }
 const workflow = (formData: FormData) => ({ kind: String(formData.get("kind")) as "question", targetId: String(formData.get("targetId")) });
 // eslint-disable-next-line no-unused-vars

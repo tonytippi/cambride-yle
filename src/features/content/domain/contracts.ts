@@ -12,7 +12,22 @@ const plainTextOption = plainText(500);
 const metadata = z.object({ altText: plainText(500) }).strict();
 const provenance = z.object({ source: plainText(500), rightsReference: plainText(500) }).strict();
 const postSubmitHint = z.object({ locale: z.literal("en-GB"), message: plainText(500) }).strict();
-const previewUrl = z.string().refine((value) => { try { const url = new URL(value); return url.protocol === "https:" && !url.search && !url.hash; } catch { return false; } }, "must be an HTTPS URL without query or fragment");
+const httpsUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+};
+const previewUrl = z.string().refine((value) => {
+  try {
+    const url = new URL(value);
+    return httpsUrl(value) && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}, "must be an HTTPS URL without credentials, query or fragment");
 const base = z.object({
   paper: z.enum(["listening", "reading_writing"]), part: z.number().int().min(1).max(5), engine: z.enum(engines),
   primaryTargetId: id, supportingTargetIds: z.array(id), topicIds: z.array(id), guidanceId: id,
@@ -21,8 +36,8 @@ const base = z.object({
 export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10), postSubmitHint: postSubmitHint.optional(), mediaIds: z.array(id).max(20).superRefine((ids, context) => { if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "MEDIA_IDS_DUPLICATE" }); }).optional() }).strict();
 export const mediaDraftSchema = base.extend({ mediaType: z.enum(["image", "audio"]), previewUrl: previewUrl.optional(), description: plainText(2000) }).strict();
 const imageMediaDraftSchema = mediaDraftSchema.extend({ mediaType: z.literal("image") });
-const permittedReferenceSchema = z.object({ id: z.string().min(1).max(100), description: z.string().min(1).max(500) }).strict();
-export const generationRequestSchema = z.discriminatedUnion("kind", [z.object({ kind: z.literal("text"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: questionDraftSchema }).strict(), z.object({ kind: z.literal("image"), staffPrompt: z.string().min(1).max(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: imageMediaDraftSchema }).strict()]);
+const permittedReferenceSchema = z.object({ id, description: plainText(500) }).strict();
+export const generationRequestSchema = z.discriminatedUnion("kind", [z.object({ kind: z.literal("text"), staffPrompt: plainText(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: questionDraftSchema }).strict(), z.object({ kind: z.literal("image"), staffPrompt: plainText(2000), permittedReferences: z.array(permittedReferenceSchema).max(10), draft: imageMediaDraftSchema }).strict()]);
 export const generatedQuestionOutputSchema = z.object({ prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10) }).strict();
 export const generatedMediaOutputSchema = z.object({ description: plainText(2000), previewUrl: previewUrl.optional() }).strict();
 export type QuestionDraftInput = z.infer<typeof questionDraftSchema>;

@@ -360,6 +360,16 @@ export async function getControlledReferences(
     policy,
   };
 }
+export async function resolvePermittedTextReferences(ids: string[], db: Database) {
+  if (!ids.length) return [];
+  const targets = await db
+    .select()
+    .from(curriculumTargets)
+    .where(inArray(curriculumTargets.id, ids));
+  return targets
+    .filter((target) => target.isApproved)
+    .map((target) => ({ id: target.id, description: target.guidance }));
+}
 export async function recordGeneration(
   kind: "question" | "media",
   targetId: string,

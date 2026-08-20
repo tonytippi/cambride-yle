@@ -18,6 +18,7 @@ const dependencies = vi.hoisted(() => ({
   getPracticeSet: vi.fn(),
   retirePracticeSet: vi.fn(),
   getControlledReferences: vi.fn(),
+  resolvePermittedTextReferences: vi.fn(),
   recordGeneration: vi.fn(),
   recordAudit: vi.fn(),
   recordPracticeSetAudit: vi.fn(),
@@ -50,6 +51,7 @@ import {
   acceptException,
   approveContent,
   createManualQuestion,
+  createManualMedia,
   buildContentReadiness,
   getContentReadiness,
   publishContent,
@@ -111,6 +113,7 @@ describe("content draft use cases", () => {
         },
       },
     });
+    dependencies.resolvePermittedTextReferences.mockResolvedValue([]);
     dependencies.getContent.mockResolvedValue({
       ...input,
       id: "018f0000-0000-7000-8000-000000000009",
@@ -198,6 +201,10 @@ describe("content draft use cases", () => {
     });
     expect(dependencies.transaction).not.toHaveBeenCalled();
   });
+  it("denies a teacher before any manual media mutation", async () => {
+    await expect(createManualMedia(teacher, { ...input, mediaType: "image", description: "A cat image" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dependencies.transaction).not.toHaveBeenCalled();
+  });
   it("rejects an audio draft for an image request before any audit or gateway mutation", async () => {
     await expect(
       requestAiDraft(lead, {
@@ -278,6 +285,20 @@ describe("content draft use cases", () => {
       lead.id,
       { transaction: "boundary" },
     );
+  });
+  it("resolves permitted text references on the server before calling the provider", async () => {
+    config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
+    dependencies.resolvePermittedTextReferences.mockResolvedValue([{ id: input.primaryTargetId, description: "Approved target guidance" }]);
+    dependencies.generate.mockResolvedValue({ endpoint: "https://ai.example.test", model: "text-model", output: { prompt: "Generated cat prompt", options: ["true", "false"] } });
+    dependencies.createQuestion.mockResolvedValue("018f0000-0000-7000-8000-000000000016");
+    await requestAiDraft(lead, { kind: "text", staffPrompt: "Create a draft", permittedReferences: [{ id: input.primaryTargetId, description: "Untrusted form text" }], draft: input });
+    expect(dependencies.generate).toHaveBeenCalledWith(expect.objectContaining({ permittedReferences: [{ id: input.primaryTargetId, description: "Approved target guidance" }] }));
+  });
+  it("rejects a permitted reference that is not approved on the server", async () => {
+    config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
+    dependencies.resolvePermittedTextReferences.mockResolvedValue([]);
+    await expect(requestAiDraft(lead, { kind: "text", staffPrompt: "Create a draft", permittedReferences: [{ id: input.primaryTargetId, description: "Untrusted form text" }], draft: input })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "REFERENCE_NOT_CONTROLLED" })]) });
+    expect(dependencies.generate).not.toHaveBeenCalled();
   });
   it("audits a provider failure independently without generated persistence", async () => {
     config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
@@ -395,10 +416,13 @@ describe("content draft use cases", () => {
     dependencies.createQuestion.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000006",
     );
+    dependencies.resolvePermittedTextReferences.mockResolvedValue([
+      { id: input.primaryTargetId, description: "Approved target guidance" },
+    ]);
     await requestAiDraft(lead, {
       kind: "text",
       staffPrompt: "Create a simple draft",
-      permittedReferences: [{ id: "ref-1", description: "Original reference" }],
+      permittedReferences: [{ id: input.primaryTargetId, description: "Original reference" }],
       draft: input,
     });
     expect(dependencies.createQuestion).toHaveBeenCalledWith(
@@ -422,7 +446,7 @@ describe("content draft use cases", () => {
       "https://ai.example.test",
       "text-model",
       { staffPrompt: "Create a simple draft" },
-      [{ id: "ref-1", description: "Original reference" }],
+      [{ id: input.primaryTargetId, description: "Approved target guidance" }],
       expect.stringMatching(/^[a-f0-9]{64}$/),
       { transaction: "boundary" },
     );
@@ -454,6 +478,12 @@ describe("content draft use cases", () => {
       { transaction: "boundary" },
       "018f0000-0000-7000-8000-000000000007",
     );
+  });
+  it("returns a stable not-found error for malformed revision and rerun source IDs", async () => {
+    await expect(reviseQuestion(lead, "not-a-uuid", input)).rejects.toMatchObject({ code: "QUESTION_DRAFT_NOT_FOUND" });
+    config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
+    await expect(requestAiDraft(lead, { kind: "text", staffPrompt: "Create a draft", permittedReferences: [], draft: input }, "not-a-uuid")).rejects.toMatchObject({ code: "CONTENT_DRAFT_NOT_FOUND" });
+    expect(dependencies.getQuestion).not.toHaveBeenCalled();
   });
   it("records immutable named validation findings for an editable version", async () => {
     await validateContent(lead, {

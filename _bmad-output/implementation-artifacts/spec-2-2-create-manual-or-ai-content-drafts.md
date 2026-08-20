@@ -66,6 +66,21 @@ context:
 - Given an existing draft, when staff edits or reruns it, then a new draft preserves prior draft and provenance history; no workflow can publish it in this story.
 - Given a teacher or learner calls any content mutation, when it reaches the application boundary, then it returns `FORBIDDEN` with no content or audit mutation.
 
+### Review Findings
+
+- [x] [Review][Patch] Resolve permitted text references server-side before forwarding them to an AI provider [`src/app/academic-lead/actions.ts:247`](../../src/app/academic-lead/actions.ts#L247)
+- [x] [Review][Dismiss] Do not add stale-source conflict handling — resolved: an AI rerun only requires an existing source draft of the matching kind. [`src/features/content/application/content.ts:917`](../../src/features/content/application/content.ts#L917)
+- [x] [Review][Patch] Disable AI request controls while `GATE-AI-DRAFT-PROVIDER` is open [`src/features/content/ui/draft-forms.tsx:249`](../../src/features/content/ui/draft-forms.tsx#L249)
+- [x] [Review][Patch] Expose manual question and media revision actions rather than leaving the immutable edit use cases unreachable [`src/app/academic-lead/actions.ts:235`](../../src/app/academic-lead/actions.ts#L235)
+- [x] [Review][Patch] Require HTTPS provider endpoints without embedded credentials before sending bearer keys [`src/shared/config/environment.ts:12`](../../src/shared/config/environment.ts#L12)
+- [x] [Review][Patch] Normalise and reject markup in staff AI prompts and permitted-reference descriptions [`src/features/content/domain/contracts.ts:24`](../../src/features/content/domain/contracts.ts#L24)
+- [x] [Review][Patch] Preserve the 30-second timeout until the complete gateway response body is consumed [`src/features/content/infrastructure/gateways.ts:11`](../../src/features/content/infrastructure/gateways.ts#L11)
+- [x] [Review][Patch] Reject credential-bearing external preview URLs before rendering them in staff browsers [`src/features/content/domain/contracts.ts:15`](../../src/features/content/domain/contracts.ts#L15)
+- [x] [Review][Patch] Validate malformed rerun source IDs before repository access so callers receive the documented stable not-found error [`src/features/content/application/content.ts:917`](../../src/features/content/application/content.ts#L917)
+- [x] [Review][Patch] Add gateway tests proving text requests use the text endpoint, model, and credential [`tests/unit/content-gateways.test.ts:6`](../../tests/unit/content-gateways.test.ts#L6)
+- [x] [Review][Patch] Add application-boundary authorisation coverage for manual media creation [`tests/unit/content-application.test.ts:1`](../../tests/unit/content-application.test.ts#L1)
+- [x] [Review][Patch] Exercise content-history immutability against a migrated PostgreSQL database rather than checking migration text only [`tests/integration/migration-baseline.test.ts:43`](../../tests/integration/migration-baseline.test.ts#L43)
+
 ## Design Notes
 
 Dung version record moi cho manual edit va AI rerun thay vi update in place. Day la cach bao toan evidence cho Story 2.3 review va Story 2.4 snapshot, trong khi `sourceVersionId` cung cap lineage ma khong lam content cu thay doi.

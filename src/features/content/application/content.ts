@@ -1,4 +1,5 @@
 import { database } from "@/infrastructure/database/client";
+import { z } from "zod";
 import { authorise, IdentityError } from "@/features/identity/application/auth";
 import type { Actor } from "@/features/identity/domain/contracts";
 import { serverConfig } from "@/shared/config/server";
@@ -40,6 +41,11 @@ export class ContentError extends Error {
   }
 }
 const staff = (actor: Actor) => authorise(actor, ["academic_lead", "admin"]);
+const draftId = (value: string, code: "QUESTION_DRAFT_NOT_FOUND" | "MEDIA_DRAFT_NOT_FOUND" | "CONTENT_DRAFT_NOT_FOUND") => {
+  if (!z.uuid().safeParse(value).success)
+    throw new ContentError(code, "The source draft was not found.");
+  return value;
+};
 /* eslint-disable no-unused-vars */
 const parse = <T>(
   schema: {
@@ -257,16 +263,17 @@ export async function reviseQuestion(
   input: QuestionDraftInput,
 ) {
   staff(actor);
+  const source = draftId(sourceId, "QUESTION_DRAFT_NOT_FOUND");
   const valid = parse(questionDraftSchema, input);
   return database.transaction(async (tx) => {
-    if (!(await repository.getQuestion(sourceId, tx)))
+    if (!(await repository.getQuestion(source, tx)))
       throw new ContentError(
         "QUESTION_DRAFT_NOT_FOUND",
         "The question draft was not found.",
       );
     await validateReferences(valid, tx);
     await validateQuestionMedia(valid, tx);
-    return repository.createQuestion(valid, actor.id, "manual", tx, sourceId);
+    return repository.createQuestion(valid, actor.id, "manual", tx, source);
   });
 }
 export async function reviseMedia(
@@ -275,15 +282,16 @@ export async function reviseMedia(
   input: MediaDraftInput,
 ) {
   staff(actor);
+  const source = draftId(sourceId, "MEDIA_DRAFT_NOT_FOUND");
   const valid = parse(mediaDraftSchema, input);
   return database.transaction(async (tx) => {
-    if (!(await repository.getMedia(sourceId, tx)))
+    if (!(await repository.getMedia(source, tx)))
       throw new ContentError(
         "MEDIA_DRAFT_NOT_FOUND",
         "The media draft was not found.",
       );
     await validateReferences(valid, tx);
-    return repository.createMedia(valid, actor.id, "manual", tx, sourceId);
+    return repository.createMedia(valid, actor.id, "manual", tx, source);
   });
 }
 const contentInput = async (
@@ -911,14 +919,24 @@ export async function requestAiDraft(
     );
   }
   try {
+    const source = sourceId
+      ? draftId(sourceId, "CONTENT_DRAFT_NOT_FOUND")
+      : undefined;
+    let permittedReferences: typeof request.permittedReferences = [];
     await database.transaction(async (tx) => {
       await validateReferences(request.draft, tx);
       if (request.kind === "text") await validateQuestionMedia(request.draft, tx);
-      if (sourceId) {
+      permittedReferences = await repository.resolvePermittedTextReferences(
+        request.permittedReferences.map((reference) => reference.id),
+        tx,
+      );
+      if (permittedReferences.length !== request.permittedReferences.length)
+        throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", [{ field: "permittedReferences", code: "REFERENCE_NOT_CONTROLLED", message: "Every permitted text reference must be an approved controlled target." }]);
+      if (source) {
         const exists =
           request.kind === "text"
-            ? await repository.getQuestion(sourceId, tx)
-            : await repository.getMedia(sourceId, tx);
+            ? await repository.getQuestion(source, tx)
+            : await repository.getMedia(source, tx);
         if (!exists)
           throw new ContentError(
             "CONTENT_DRAFT_NOT_FOUND",
@@ -928,7 +946,7 @@ export async function requestAiDraft(
     });
     let result;
     try {
-      result = await generate(request);
+      result = await generate({ ...request, permittedReferences });
     } catch (error) {
       if (error instanceof GatewayError)
         throw new ContentError(error.code, error.message);
@@ -944,7 +962,7 @@ export async function requestAiDraft(
           ...request.draft,
           ...(output as { prompt: string; options: string[] }),
           provenance: generatedProvenance(
-            request,
+            { ...request, permittedReferences },
             result.endpoint,
             result.model,
           ),
@@ -956,7 +974,7 @@ export async function requestAiDraft(
           actor.id,
           "generated",
           tx,
-          sourceId,
+          source,
         );
         await repository.recordGeneration(
           kind,
@@ -965,7 +983,7 @@ export async function requestAiDraft(
           result.endpoint,
           result.model,
           { staffPrompt: request.staffPrompt },
-          request.permittedReferences,
+          permittedReferences,
           outputHash(result.output),
           tx,
         );
@@ -981,7 +999,7 @@ export async function requestAiDraft(
       const generated = {
         ...request.draft,
         ...(output as { description: string; previewUrl?: string }),
-        provenance: generatedProvenance(request, result.endpoint, result.model),
+        provenance: generatedProvenance({ ...request, permittedReferences }, result.endpoint, result.model),
       };
       await validateReferences(generated, tx);
       const targetId = await repository.createMedia(
@@ -989,7 +1007,7 @@ export async function requestAiDraft(
         actor.id,
         "generated",
         tx,
-        sourceId,
+        source,
       );
       await repository.recordGeneration(
         kind,
@@ -998,7 +1016,7 @@ export async function requestAiDraft(
         result.endpoint,
         result.model,
         { staffPrompt: request.staffPrompt },
-        request.permittedReferences,
+        permittedReferences,
         outputHash(result.output),
         tx,
       );

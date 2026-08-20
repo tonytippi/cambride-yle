@@ -21,4 +21,8 @@ describe("server configuration", () => {
     expect(config.AI_TEXT_API_KEY).toBeUndefined();
     expect(config).not.toHaveProperty("NEXT_PUBLIC_AI_TEXT_API_KEY");
   });
+  it("rejects non-HTTPS or credential-bearing provider endpoints", () => {
+    expect(() => parseServerConfig({ ...valid, AI_TEXT_ENDPOINT: "http://text.example.test" })).toThrow("AI_TEXT_ENDPOINT");
+    expect(() => parseServerConfig({ ...valid, AI_IMAGE_ENDPOINT: "https://user:secret@image.example.test" })).toThrow("AI_IMAGE_ENDPOINT");
+  });
 });

@@ -16,6 +16,7 @@ import {
   PracticeSetRetireControl,
 } from "@/features/content/ui/draft-forms";
 import { ReadinessReport } from "@/features/content/ui/readiness-report";
+import { serverConfig } from "@/shared/config/server";
 import {
   acceptExceptionAction,
   approveContentAction,
@@ -187,6 +188,7 @@ export default async function AcademicLeadHome() {
           questionAction={createQuestionDraftAction}
           mediaAction={createMediaDraftAction}
           aiAction={requestAiDraftAction}
+          aiEnabled={serverConfig.AI_DRAFT_PROVIDER_GATE_CLOSED}
           targets={catalogue.targets}
           guidance={catalogue.guidance}
           policies={catalogue.policies}
