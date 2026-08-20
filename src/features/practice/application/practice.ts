@@ -1,5 +1,6 @@
 import type { Actor } from "@/features/identity/domain/contracts";
-import { learnerHomeFilterSchema, type LearnerHome, type LearnerPracticeSet, type SubmittedEvidence } from "../domain/contracts";
+import { z } from "zod";
+import { learnerHomeFilterSchema, preparePracticeSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
 
 const recommendationVersion = "learner-home-v1";
@@ -44,4 +45,46 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
   const recommendation = { version: recommendationVersion, setIds: ranked.map((set) => set.id), practiceArea: matchingArea[0] };
   await repository.recordRecommendation(actor.id, recommendation.version, recommendation.setIds);
   return { allSets, sets, filters, recommendation };
+}
+
+const preparationMessages = {
+  SET_NOT_FOUND: "This practice activity is no longer available.",
+  SET_RETIRED: "This practice activity is no longer available.",
+  OPEN_ATTEMPT_EXISTS: "You already have this practice activity open. Please resume it.",
+  MEDIA_UNAVAILABLE: "Essential media is not available. Please retry or choose another activity.",
+  MEDIA_AUTHORISATION_FAILED: "Essential media is not available. Please retry or choose another activity.",
+  ESSENTIAL_MEDIA_MISSING: "This practice activity is missing essential media.",
+} as const;
+
+function learnerOnly(actor: Actor) {
+  return actor.role === "learner" ? undefined : { error: { code: "FORBIDDEN" as const, message: "Learner access is required." } };
+}
+
+export async function preparePractice(actor: Actor, input: unknown): Promise<PracticeResult<PracticePreparation>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = preparePracticeSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  const { setId } = parsed.data;
+  const result = await repository.preparePublishedPractice(actor.id, setId);
+  return "error" in result ? { error: { code: result.error, message: preparationMessages[result.error] } } : { data: result };
+}
+
+export async function startPractice(actor: Actor, input: unknown): Promise<PracticeResult<PracticeStart>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = startPracticeSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  const { setId } = parsed.data;
+  const result = await repository.startPublishedPractice(actor.id, setId);
+  return "error" in result ? { error: { code: result.error, message: preparationMessages[result.error] } } : { data: result };
+}
+
+export async function getOpenPracticeAttempt(actor: Actor, input: unknown): Promise<PracticeResult<OpenPracticeAttempt>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = z.object({ setId: preparePracticeSchema.shape.setId, attemptId: z.string().uuid() }).strict().safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  const attempt = await repository.getOpenPracticeAttempt(actor.id, parsed.data.setId, parsed.data.attemptId);
+  return attempt ? { data: attempt } : { error: { code: "SET_NOT_FOUND", message: "This practice activity is no longer available." } };
 }

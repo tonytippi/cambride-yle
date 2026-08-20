@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn() }));
+const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn(), preparePublishedPractice: vi.fn(), startPublishedPractice: vi.fn(), getOpenPracticeAttempt: vi.fn() }));
 vi.mock("@/features/practice/infrastructure/repositories", () => dependencies);
-import { getLearnerHome } from "@/features/practice/application/practice";
+import { getLearnerHome, preparePractice, startPractice } from "@/features/practice/application/practice";
 
 const learner = { id: "018f0000-0000-7000-8000-000000000001", role: "learner" as const, email: "learner@example.test", displayName: "Learner" };
 const row = (id: string, openLastSavedAt: Date | null = null, submittedAttemptId: string | null = null) => ({ id, title: `Set ${id}`, paper: "listening" as const, part: "1", estimatedDurationSeconds: 300, targetIds: ["animals"], topic: "Animals", taskType: "Picture choice", openLastSavedAt, submittedAttemptId });
@@ -56,5 +56,26 @@ describe("learner practice home", () => {
     dependencies.listRecentSubmittedEvidence.mockResolvedValue([{ practiceSetId: "one", attemptId: "one", submittedAt: new Date(), practiceAreaId: "animals", label: "needs_practice" }]);
     await expect(getLearnerHome(learner)).resolves.toMatchObject({ sets: [expect.objectContaining({ id: "one" })], recommendation: undefined });
     expect(dependencies.recordRecommendation).not.toHaveBeenCalled();
+  });
+});
+
+describe("practice preparation and start", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+  it("authorises learners and rejects invalid preparation input before repository access", async () => {
+    await expect(preparePractice({ ...learner, role: "teacher" }, { setId: learner.id })).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
+    await expect(preparePractice(learner, { setId: "not-a-uuid" })).resolves.toMatchObject({ error: { code: "INPUT_INVALID" } });
+    expect(dependencies.preparePublishedPractice).not.toHaveBeenCalled();
+  });
+  it("returns immutable preparation data and rejects missing essential media", async () => {
+    dependencies.preparePublishedPractice.mockResolvedValueOnce({ setId: learner.id, setVersionId: learner.id, title: "Animals", assets: [{ id: learner.id, type: "audio", url: "/api/practice/media?token=opaque", cacheKey: "media/id/hash" }] });
+    await expect(preparePractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { title: "Animals" } });
+    dependencies.preparePublishedPractice.mockResolvedValueOnce({ error: "ESSENTIAL_MEDIA_MISSING" });
+    await expect(preparePractice(learner, { setId: learner.id })).resolves.toMatchObject({ error: { code: "ESSENTIAL_MEDIA_MISSING" } });
+  });
+  it("returns authoritative start and resume states without creating a client-side substitute", async () => {
+    dependencies.startPublishedPractice.mockResolvedValueOnce({ attemptId: learner.id, setId: learner.id, setVersionId: learner.id, revision: 0, disposition: "started" });
+    await expect(startPractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { disposition: "started" } });
+    dependencies.startPublishedPractice.mockResolvedValueOnce({ attemptId: learner.id, setId: learner.id, setVersionId: learner.id, revision: 2, disposition: "resume" });
+    await expect(startPractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { disposition: "resume", revision: 2 } });
   });
 });

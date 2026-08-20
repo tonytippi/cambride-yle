@@ -19,7 +19,9 @@ const serverEnvironmentSchema = z.object({
   AI_TEXT_API_KEY: z.string().min(1).optional(),
   AI_IMAGE_ENDPOINT: providerEndpoint.optional(),
   AI_IMAGE_MODEL: z.string().min(1).optional(),
-  AI_IMAGE_API_KEY: z.string().min(1).optional()
+  AI_IMAGE_API_KEY: z.string().min(1).optional(),
+  MEDIA_BINARY_ORIGIN: providerEndpoint.optional(),
+  MEDIA_SIGNING_SECRET: z.string().min(32).optional()
 });
 
 export type ServerConfig = z.infer<typeof serverEnvironmentSchema>;

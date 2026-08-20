@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }
       ]
+    }, {
+      source: "/:worker(service-worker|pwa-cache-policy).js",
+      headers: [{ key: "Cache-Control", value: "no-cache" }, { key: "Service-Worker-Allowed", value: "/" }]
     }];
   }
 };
