@@ -1,6 +1,6 @@
 import type { Actor } from "@/features/identity/domain/contracts";
 import { z } from "zod";
-import { learnerHomeFilterSchema, preparePracticeSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
+import { learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
 
 const recommendationVersion = "learner-home-v1";
@@ -87,4 +87,40 @@ export async function getOpenPracticeAttempt(actor: Actor, input: unknown): Prom
   if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
   const attempt = await repository.getOpenPracticeAttempt(actor.id, parsed.data.setId, parsed.data.attemptId);
   return attempt ? { data: attempt } : { error: { code: "SET_NOT_FOUND", message: "This practice activity is no longer available." } };
+}
+
+const playerMessages = {
+  ATTEMPT_SCOPE_MISMATCH: "This practice activity is no longer available.",
+  ATTEMPT_FINALISED: "This practice activity has already been submitted.",
+  ATTEMPT_REVISION_CONFLICT: "Your practice changed elsewhere. Reload the latest version.",
+  ITEM_INVALID: "This question is unavailable.",
+} as const;
+function playerResult<T extends object>(result: T | { error: keyof typeof playerMessages }): PracticeResult<T> {
+  return "error" in result ? { error: { code: result.error, message: playerMessages[result.error] } } : { data: result };
+}
+export async function getPracticePlayer(actor: Actor, input: unknown): Promise<PracticeResult<PracticePlayer>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = practiceAttemptSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  return playerResult<PracticePlayer>(await repository.getPracticePlayer(actor.id, parsed.data.setId, parsed.data.attemptId));
+}
+export async function savePracticeResponse(actor: Actor, input: unknown): Promise<PracticeResult<{ revision: number }>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = responseSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Enter a valid answer." } };
+  return playerResult(await repository.savePracticeResponse(actor.id, parsed.data));
+}
+export async function recordPracticePlayback(actor: Actor, input: unknown): Promise<PracticeResult<{ revision: number }>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = playbackSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Replay this audio again." } };
+  return playerResult(await repository.recordPracticePlayback(actor.id, parsed.data));
+}
+export async function getAttemptMedia(actor: Actor, input: unknown) {
+  if (actor.role !== "learner") return undefined;
+  const parsed = playbackSchema.pick({ setId: true, attemptId: true, mediaId: true }).safeParse(input);
+  return parsed.success ? repository.getAttemptMedia(actor.id, parsed.data.setId, parsed.data.attemptId, parsed.data.mediaId) : undefined;
 }

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn(), preparePublishedPractice: vi.fn(), startPublishedPractice: vi.fn(), getOpenPracticeAttempt: vi.fn() }));
+const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn(), preparePublishedPractice: vi.fn(), startPublishedPractice: vi.fn(), getOpenPracticeAttempt: vi.fn(), getPracticePlayer: vi.fn(), savePracticeResponse: vi.fn(), recordPracticePlayback: vi.fn() }));
 vi.mock("@/features/practice/infrastructure/repositories", () => dependencies);
-import { getLearnerHome, preparePractice, startPractice } from "@/features/practice/application/practice";
+import { getLearnerHome, getPracticePlayer, preparePractice, recordPracticePlayback, savePracticeResponse, startPractice } from "@/features/practice/application/practice";
 
 const learner = { id: "018f0000-0000-7000-8000-000000000001", role: "learner" as const, email: "learner@example.test", displayName: "Learner" };
 const row = (id: string, openLastSavedAt: Date | null = null, submittedAttemptId: string | null = null) => ({ id, title: `Set ${id}`, paper: "listening" as const, part: "1", estimatedDurationSeconds: 300, targetIds: ["animals"], topic: "Animals", taskType: "Picture choice", openLastSavedAt, submittedAttemptId });
@@ -77,5 +77,22 @@ describe("practice preparation and start", () => {
     await expect(startPractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { disposition: "started" } });
     dependencies.startPublishedPractice.mockResolvedValueOnce({ attemptId: learner.id, setId: learner.id, setVersionId: learner.id, revision: 2, disposition: "resume" });
     await expect(startPractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { disposition: "resume", revision: 2 } });
+  });
+});
+
+describe("practice player mutations", () => {
+  const input = { setId: learner.id, attemptId: "018f0000-0000-7000-8000-000000000002", itemId: "018f0000-0000-7000-8000-000000000003", expectedRevision: 2 };
+  beforeEach(() => { vi.clearAllMocks(); });
+  it("returns learner-safe player data only after learner authorisation", async () => {
+    dependencies.getPracticePlayer.mockResolvedValue({ attemptId: input.attemptId, setId: input.setId, setVersionId: input.setId, revision: 2, title: "Animals", items: [] });
+    await expect(getPracticePlayer(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ data: { revision: 2, items: [] } });
+    await expect(getPracticePlayer({ ...learner, role: "teacher" }, input)).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
+  });
+  it("requires valid revisioned inputs and preserves authoritative conflicts", async () => {
+    await expect(savePracticeResponse(learner, { ...input, value: { answer: "no" } })).resolves.toMatchObject({ error: { code: "INPUT_INVALID" } });
+    dependencies.savePracticeResponse.mockResolvedValue({ error: "ATTEMPT_REVISION_CONFLICT" });
+    await expect(savePracticeResponse(learner, { ...input, value: "cat" })).resolves.toMatchObject({ error: { code: "ATTEMPT_REVISION_CONFLICT" } });
+    dependencies.recordPracticePlayback.mockResolvedValue({ error: "ATTEMPT_FINALISED" });
+    await expect(recordPracticePlayback(learner, { ...input, mediaId: "018f0000-0000-7000-8000-000000000004" })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
   });
 });

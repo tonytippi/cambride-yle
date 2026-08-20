@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { accounts } from "./identity";
-import { practiceSets } from "./content";
+import { practiceSetItemMedia, practiceSetItems, practiceSets } from "./content";
 
 export const practiceAttemptStatus = pgEnum("practice_attempt_status", ["open", "submitted"]);
 export const practiceEvidenceLabel = pgEnum("practice_evidence_label", ["secure", "building", "needs_practice", "not_assessed_yet"]);
@@ -48,6 +48,26 @@ export const practiceAttemptEvidence = pgTable("practice_attempt_evidence", {
   foreignKey({ columns: [table.attemptId, table.practiceSetId], foreignColumns: [practiceAttempts.id, practiceAttempts.practiceSetId], name: "practice_attempt_evidence_attempt_set_fk" }),
   index("practice_attempt_evidence_set_idx").on(table.practiceSetId),
 ]);
+
+export const practiceAttemptResponses = pgTable("practice_attempt_responses", {
+  id: uuid("id").primaryKey(),
+  attemptId: uuid("attempt_id").notNull().references(() => practiceAttempts.id),
+  practiceSetItemId: uuid("practice_set_item_id").notNull().references(() => practiceSetItems.id),
+  value: jsonb("value").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("practice_attempt_responses_attempt_item_unique").on(table.attemptId, table.practiceSetItemId),
+  index("practice_attempt_responses_attempt_idx").on(table.attemptId),
+]);
+
+export const practiceAttemptPlaybackEvents = pgTable("practice_attempt_playback_events", {
+  id: uuid("id").primaryKey(),
+  attemptId: uuid("attempt_id").notNull().references(() => practiceAttempts.id),
+  practiceSetItemId: uuid("practice_set_item_id").notNull().references(() => practiceSetItems.id),
+  practiceSetItemMediaId: uuid("practice_set_item_media_id").notNull().references(() => practiceSetItemMedia.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("practice_attempt_playback_events_attempt_idx").on(table.attemptId)]);
 
 export const practiceRecommendationAudits = pgTable("practice_recommendation_audits", {
   id: uuid("id").primaryKey(),

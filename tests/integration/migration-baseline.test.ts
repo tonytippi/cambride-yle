@@ -77,6 +77,10 @@ describe("migration baseline", () => {
       "db/migrations/0018_practice_attempt_snapshot_metadata.sql",
       "utf8",
     );
+    const practiceResponseMigration = await readFile(
+      "db/migrations/0019_practice_attempt_responses_and_playback.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -226,6 +230,11 @@ describe("migration baseline", () => {
     expect(practiceSnapshotMigration).toContain('ADD COLUMN "practice_set_version_id" uuid');
     expect(practiceSnapshotMigration).toContain("practice_attempts_snapshot_check");
     expect(practiceSnapshotMigration).toContain("PRACTICE_ATTEMPT_SNAPSHOT_IMMUTABLE");
+    expect(journal).toContain("0019_practice_attempt_responses_and_playback");
+    expect(practiceResponseMigration).toContain('CREATE TABLE "practice_attempt_responses"');
+    expect(practiceResponseMigration).toContain('CREATE TABLE "practice_attempt_playback_events"');
+    expect(practiceResponseMigration).toContain("practice_attempt_responses_delete_guard");
+    expect(practiceResponseMigration).toContain("m.media_type = 'audio'");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
