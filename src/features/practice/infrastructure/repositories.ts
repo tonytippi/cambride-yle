@@ -4,16 +4,18 @@ import {
   practiceAttemptEvidence,
   practiceAttempts,
   practiceAttemptPlaybackEvents,
+  practiceAttemptReviewItems,
   practiceAttemptResponses,
   practiceRecommendationAudits,
   practiceSetItems,
   practiceSetItemMedia,
   practiceSets,
 } from "@/../db/schema";
+import { evaluateAnswer, normaliseAnswer } from "@/features/curriculum/domain/answer-policy";
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import { authoriseMedia, isMediaGatewayConfigured } from "./media-gateway";
-import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedEvidence } from "../domain/contracts";
+import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedEvidence, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
 
 type Database = typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
 
@@ -144,6 +146,7 @@ export async function getPracticePlayer(learnerId: string, setId: string, attemp
 type MutationError = "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" | "ATTEMPT_REVISION_CONFLICT" | "ITEM_INVALID";
 async function reviseOpenAttempt(learnerId: string, setId: string, attemptId: string, expectedRevision: number, itemId: string, mediaId?: string, value?: string | boolean | number | null): Promise<{ revision: number } | { error: MutationError }> {
   return database.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM practice_attempts WHERE id = ${attemptId} FOR UPDATE`);
     const attempt = (await tx.select().from(practiceAttempts).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
     if (!attempt || attempt.practiceSetId !== setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
     if (attempt.status !== "open") return { error: "ATTEMPT_FINALISED" };
@@ -169,4 +172,69 @@ export const recordPracticePlayback = (learnerId: string, input: { setId: string
 export async function getAttemptMedia(learnerId: string, setId: string, attemptId: string, setVersionId: string, mediaId: string, mediaKey: string, db: Database = database) {
   const media = (await db.select({ id: practiceSetItemMedia.id, objectVersion: practiceSetItemMedia.objectVersion, contentHash: practiceSetItemMedia.contentHash }).from(practiceAttempts).innerJoin(practiceSetItems, eq(practiceSetItems.practiceSetId, practiceAttempts.practiceSetVersionId)).innerJoin(practiceSetItemMedia, and(eq(practiceSetItemMedia.practiceSetItemId, practiceSetItems.id), eq(practiceSetItemMedia.id, mediaId))).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.practiceSetId, setId), eq(practiceAttempts.practiceSetVersionId, setVersionId), eq(practiceAttempts.status, "open"))).limit(1))[0];
   return media && mediaKey === `${media.id}/${media.contentHash}` ? media : undefined;
+}
+
+type FinalisationError = "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" | "ATTEMPT_REVISION_CONFLICT" | "ITEM_INVALID";
+type StoredPolicy = { canonicalAnswer: string | boolean | number; acceptedAnswers: (string | boolean | number)[]; inputKind: "choice" | "boolean" | "yes_no" | "number" | "name" | "word"; normalisation: { unicode: "NFC"; locale: "en-GB"; caseSensitive: boolean; trimWhitespace: boolean; normalizePunctuation: boolean; normalizeNumberForms: boolean }; maxWords: number; teacherReviewIfUncertain: boolean; policyId?: string; canonicalId?: string };
+const isPolicy = (value: unknown): value is StoredPolicy => !!value && typeof value === "object" && "canonicalAnswer" in value && "inputKind" in value && "normalisation" in value && "maxWords" in value && "teacherReviewIfUncertain" in value && "acceptedAnswers" in value;
+const explanationFrom = (value: unknown) => {
+  const feedback = value as { postSubmitHint?: { message?: unknown } } | null;
+  return typeof feedback?.postSubmitHint?.message === "string" ? feedback.postSubmitHint.message : undefined;
+};
+const evidenceFor = (outcomes: string[]): "secure" | "building" | "needs_practice" | "not_assessed_yet" => outcomes.length === 0 || outcomes.every((outcome) => outcome === "unanswered" || outcome === "needs_teacher_review") ? "not_assessed_yet" : outcomes.every((outcome) => outcome === "correct") ? "secure" : outcomes.some((outcome) => outcome === "correct") ? "building" : "needs_practice";
+const answerLabel = (answer: string | boolean | number | undefined, engine: LearnerEngine, choices: string[]) => {
+  if (answer === undefined) return undefined;
+  if (typeof answer === "boolean") return answer ? "True" : "False";
+  return engine === "audio_picture_choice" ? choices.find((choice) => choice === answer) ?? "Selected picture" : String(answer);
+};
+export const finalisationResponse = (response: unknown, policy: StoredPolicy) => {
+  if (policy.inputKind !== "number" || typeof response !== "string") return response;
+  const normalised = normaliseAnswer(response, policy);
+  return typeof normalised === "number" ? normalised : typeof normalised === "string" && /^\d+$/.test(normalised) ? Number(normalised) : response;
+};
+export const finalTimingSnapshot = (attempt: Pick<typeof practiceAttempts.$inferSelect, "createdAt">, submittedAt: Date) => ({ startedAt: attempt.createdAt.toISOString(), lastSavedAt: submittedAt.toISOString(), submittedAt: submittedAt.toISOString() });
+
+export async function submitPracticeAttempt(learnerId: string, input: { setId: string; attemptId: string; expectedRevision: number; idempotencyKey: string }): Promise<SubmittedPracticeResult | { error: FinalisationError }> {
+  return database.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM practice_attempts WHERE id = ${input.attemptId} FOR UPDATE`);
+    const attempt = (await tx.select().from(practiceAttempts).where(and(eq(practiceAttempts.id, input.attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
+    if (!attempt || attempt.practiceSetId !== input.setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
+    if (attempt.status === "submitted") return attempt.finalisationKey === input.idempotencyKey ? { attemptId: attempt.id, setId: attempt.practiceSetId, submittedAt: attempt.submittedAt!, revision: attempt.revision } : { error: "ATTEMPT_FINALISED" };
+    if (attempt.revision !== input.expectedRevision) return { error: "ATTEMPT_REVISION_CONFLICT" };
+    const set = (await tx.select({ title: practiceSets.title, paper: practiceSets.paper, part: practiceSets.part }).from(practiceSets).where(eq(practiceSets.id, attempt.practiceSetVersionId)).limit(1))[0];
+    const items = await tx.select({ id: practiceSetItems.id, position: practiceSetItems.position, engine: practiceSetItems.engine, prompt: practiceSetItems.renderedPrompt, options: practiceSetItems.renderedOptions, answerPolicy: practiceSetItems.answerPolicy, feedback: practiceSetItems.feedback, tags: practiceSetItems.tags }).from(practiceSetItems).where(eq(practiceSetItems.practiceSetId, attempt.practiceSetVersionId)).orderBy(practiceSetItems.position);
+    if (!set || !items.length || items.some((item) => !isPolicy(item.answerPolicy) || !supportedEngines.has(item.engine as LearnerEngine) || !safeOptions(item.options))) return { error: "ITEM_INVALID" };
+    const responses = await tx.select({ itemId: practiceAttemptResponses.practiceSetItemId, value: practiceAttemptResponses.value }).from(practiceAttemptResponses).where(eq(practiceAttemptResponses.attemptId, attempt.id));
+    const playback = await tx.select({ itemId: practiceAttemptPlaybackEvents.practiceSetItemId, mediaId: practiceAttemptPlaybackEvents.practiceSetItemMediaId, createdAt: practiceAttemptPlaybackEvents.createdAt }).from(practiceAttemptPlaybackEvents).where(eq(practiceAttemptPlaybackEvents.attemptId, attempt.id));
+    const scored = items.map((item) => {
+      const response = responses.find((entry) => entry.itemId === item.id)?.value;
+      const policy = item.answerPolicy as StoredPolicy;
+      return { item, response, outcome: response === undefined ? "unanswered" : evaluateAnswer(finalisationResponse(response, policy), policy) };
+    });
+    const label = evidenceFor(scored.map((entry) => entry.outcome));
+    const submittedAt = new Date();
+    const reviewSnapshotItems = items.map((item) => ({ id: item.id, position: item.position }));
+    const updated = (await tx.update(practiceAttempts).set({ status: "submitted", submittedAt, finalisationKey: input.idempotencyKey, revision: attempt.revision + 1, lastSavedAt: submittedAt, submittedTitle: set.title, submittedPresentation: { paper: set.paper, part: set.part }, expectedReviewItemCount: items.length, reviewSnapshotItems, finalTiming: finalTimingSnapshot(attempt, submittedAt), playbackSnapshot: playback.map((event) => ({ itemId: event.itemId, mediaId: event.mediaId, playedAt: event.createdAt.toISOString() })) }).where(and(eq(practiceAttempts.id, attempt.id), eq(practiceAttempts.status, "open"), eq(practiceAttempts.revision, input.expectedRevision))).returning())[0];
+    if (!updated) return { error: "ATTEMPT_REVISION_CONFLICT" };
+    for (const { item, response, outcome } of scored) {
+      const policy = item.answerPolicy as StoredPolicy;
+      const choices = safeOptions(item.options)!;
+      await tx.insert(practiceAttemptReviewItems).values({ id: uuidv7(), attemptId: attempt.id, practiceSetItemId: item.id, position: item.position, response: response ?? null, responseLabel: answerLabel(response as string | boolean | number | undefined, item.engine as LearnerEngine, choices), outcome, evidenceLabel: label, approvedAnswer: policy.canonicalAnswer, approvedAnswerLabel: answerLabel(policy.canonicalAnswer, item.engine as LearnerEngine, choices)!, presentation: { engine: item.engine, prompt: item.prompt, options: choices }, explanation: explanationFrom(item.feedback), answerPolicyVersion: policy.policyId ?? policy.canonicalId ?? "published-snapshot", curriculumTags: item.tags });
+    }
+    const tags = items.flatMap((item) => {
+      const value = item.tags as { targetIds?: unknown; guidanceId?: unknown };
+      return Array.isArray(value?.targetIds) ? value.targetIds.filter((id): id is string => typeof id === "string") : typeof value?.guidanceId === "string" ? [value.guidanceId] : [];
+    });
+    for (const area of new Set(tags)) await tx.insert(practiceAttemptEvidence).values({ id: uuidv7(), attemptId: attempt.id, practiceSetId: attempt.practiceSetId, practiceAreaId: area, label });
+    return { attemptId: updated.id, setId: updated.practiceSetId, submittedAt: updated.submittedAt!, revision: updated.revision };
+  });
+}
+
+export async function getSubmittedPracticeReview(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<SubmittedPracticeReview | { error: "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" }> {
+  const attempt = (await db.select({ id: practiceAttempts.id, setId: practiceAttempts.practiceSetId, revision: practiceAttempts.revision, submittedAt: practiceAttempts.submittedAt, status: practiceAttempts.status, title: practiceAttempts.submittedTitle, expectedReviewItemCount: practiceAttempts.expectedReviewItemCount, reviewSnapshotItems: practiceAttempts.reviewSnapshotItems, presentation: practiceAttempts.submittedPresentation, timing: practiceAttempts.finalTiming, playback: practiceAttempts.playbackSnapshot }).from(practiceAttempts).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
+  if (!attempt || attempt.setId !== setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
+  if (attempt.status !== "submitted" || !attempt.submittedAt || !attempt.title || !attempt.presentation || !attempt.timing || !attempt.playback || !attempt.expectedReviewItemCount || !attempt.reviewSnapshotItems) return { error: "ATTEMPT_FINALISED" };
+  const items = await db.select().from(practiceAttemptReviewItems).where(eq(practiceAttemptReviewItems.attemptId, attemptId)).orderBy(practiceAttemptReviewItems.position);
+  if (items.length !== attempt.expectedReviewItemCount || JSON.stringify(items.map((item) => ({ id: item.practiceSetItemId, position: item.position }))) !== JSON.stringify(attempt.reviewSnapshotItems) || items.some((item) => !item.presentation || !item.approvedAnswerLabel)) return { error: "ATTEMPT_FINALISED" };
+  return { attemptId, setId, submittedAt: attempt.submittedAt, revision: attempt.revision, title: attempt.title, items: items.map((item) => ({ id: item.practiceSetItemId, position: item.position, response: item.response as string | boolean | number | null, responseLabel: item.responseLabel ?? undefined, outcome: item.outcome as SubmittedPracticeReview["items"][number]["outcome"], approvedAnswer: item.approvedAnswer as string | boolean | number, approvedAnswerLabel: item.approvedAnswerLabel, explanation: item.explanation ?? undefined, evidenceLabel: item.evidenceLabel })) };
 }

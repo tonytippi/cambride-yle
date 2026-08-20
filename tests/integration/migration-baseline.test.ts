@@ -81,6 +81,10 @@ describe("migration baseline", () => {
       "db/migrations/0019_practice_attempt_responses_and_playback.sql",
       "utf8",
     );
+    const submissionReviewMigration = await readFile(
+      "db/migrations/0020_practice_attempt_submission_review.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -235,6 +239,18 @@ describe("migration baseline", () => {
     expect(practiceResponseMigration).toContain('CREATE TABLE "practice_attempt_playback_events"');
     expect(practiceResponseMigration).toContain("practice_attempt_responses_delete_guard");
     expect(practiceResponseMigration).toContain("m.media_type = 'audio'");
+    const entries = JSON.parse(journal).entries as { idx: number; when: number; tag: string }[];
+    expect(entries.map((entry) => entry.idx)).toEqual(entries.map((_, index) => index));
+    expect(entries.map((entry) => entry.tag)).toEqual([...entries].sort((a, b) => a.tag.localeCompare(b.tag)).map((entry) => entry.tag));
+    expect(entries.map((entry) => entry.when)).toEqual([...entries].sort((a, b) => a.when - b.when).map((entry) => entry.when));
+    expect(journal).toContain("0020_practice_attempt_submission_review");
+    expect(submissionReviewMigration).toContain('"submitted_title" text');
+    expect(submissionReviewMigration).toContain('"playback_snapshot" jsonb');
+    expect(submissionReviewMigration).toContain("PRACTICE_ATTEMPT_REVIEW_SCOPE_INVALID");
+    expect(submissionReviewMigration).toContain("PRACTICE_ATTEMPT_REVIEW_SNAPSHOT_COMPLETE");
+    expect(submissionReviewMigration).toContain("PRACTICE_ATTEMPT_REVIEW_SNAPSHOT_INCOMPLETE");
+    expect(submissionReviewMigration).toContain("DEFERRABLE INITIALLY DEFERRED");
+    expect(submissionReviewMigration).toContain("a.status = 'submitted'");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {

@@ -28,11 +28,19 @@ export const practiceAttempts = pgTable("practice_attempts", {
   status: practiceAttemptStatus("status").notNull().default("open"),
   lastSavedAt: timestamp("last_saved_at", { withTimezone: true }).notNull().defaultNow(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  finalisationKey: uuid("finalisation_key"),
+  submittedTitle: text("submitted_title"),
+  submittedPresentation: jsonb("submitted_presentation"),
+  expectedReviewItemCount: integer("expected_review_item_count"),
+  reviewSnapshotItems: jsonb("review_snapshot_items"),
+  finalTiming: jsonb("final_timing"),
+  playbackSnapshot: jsonb("playback_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   check("practice_attempts_lifecycle_check", sql`((${table.status} = 'open' AND ${table.submittedAt} IS NULL) OR (${table.status} = 'submitted' AND ${table.submittedAt} IS NOT NULL)) AND ${table.lastSavedAt} >= ${table.createdAt} AND (${table.submittedAt} IS NULL OR ${table.submittedAt} >= ${table.createdAt}) AND ${table.practiceSetVersionId} = ${table.practiceSetId} AND ${table.revision} >= 0`),
   index("practice_attempts_learner_set_idx").on(table.learnerId, table.practiceSetId, table.status),
   unique("practice_attempts_id_set_unique").on(table.id, table.practiceSetId),
+  unique("practice_attempts_finalisation_key_unique").on(table.id, table.finalisationKey),
   uniqueIndex("practice_attempts_one_open_per_learner_set").on(table.learnerId, table.practiceSetId).where(sql`${table.status} = 'open'`),
 ]);
 
@@ -59,6 +67,26 @@ export const practiceAttemptResponses = pgTable("practice_attempt_responses", {
 }, (table) => [
   unique("practice_attempt_responses_attempt_item_unique").on(table.attemptId, table.practiceSetItemId),
   index("practice_attempt_responses_attempt_idx").on(table.attemptId),
+]);
+
+export const practiceAttemptReviewItems = pgTable("practice_attempt_review_items", {
+  id: uuid("id").primaryKey(),
+  attemptId: uuid("attempt_id").notNull().references(() => practiceAttempts.id),
+  practiceSetItemId: uuid("practice_set_item_id").notNull().references(() => practiceSetItems.id),
+  position: integer("position").notNull(),
+  response: jsonb("response"),
+  outcome: text("outcome").notNull(),
+  evidenceLabel: practiceEvidenceLabel("evidence_label").notNull(),
+  approvedAnswer: jsonb("approved_answer").notNull(),
+  explanation: text("explanation"),
+  responseLabel: text("response_label"),
+  approvedAnswerLabel: text("approved_answer_label").notNull(),
+  presentation: jsonb("presentation").notNull(),
+  answerPolicyVersion: text("answer_policy_version").notNull(),
+  curriculumTags: jsonb("curriculum_tags").notNull(),
+}, (table) => [
+  unique("practice_attempt_review_items_attempt_item_unique").on(table.attemptId, table.practiceSetItemId),
+  index("practice_attempt_review_items_attempt_idx").on(table.attemptId),
 ]);
 
 export const practiceAttemptPlaybackEvents = pgTable("practice_attempt_playback_events", {

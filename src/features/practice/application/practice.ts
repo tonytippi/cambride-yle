@@ -1,6 +1,6 @@
 import type { Actor } from "@/features/identity/domain/contracts";
 import { z } from "zod";
-import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
+import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, submitAttemptSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence, type SubmittedPracticeResult, type SubmittedPracticeReview } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
 
 const recommendationVersion = "learner-home-v1";
@@ -25,6 +25,7 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
     ...row,
     paper: row.paper,
     targetIds: row.targetIds as string[],
+    submittedAttemptId: row.submittedAttemptId,
     action: (row.openLastSavedAt ? "Resume" : row.submittedAttemptId ? "Review" : "Start") as LearnerPracticeSet["action"],
     lastSavedAt: row.openLastSavedAt ?? undefined,
   }));
@@ -123,4 +124,19 @@ export async function getAttemptMedia(actor: Actor, input: unknown) {
   if (actor.role !== "learner") return undefined;
   const parsed = attemptMediaSchema.safeParse(input);
   return parsed.success ? repository.getAttemptMedia(actor.id, parsed.data.setId, parsed.data.attemptId, parsed.data.setVersionId, parsed.data.mediaId, parsed.data.mediaKey) : undefined;
+}
+export async function submitPracticeAttempt(actor: Actor, input: unknown): Promise<PracticeResult<SubmittedPracticeResult>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = submitAttemptSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Reconnect and submit your practice again." } };
+  return playerResult(await repository.submitPracticeAttempt(actor.id, parsed.data));
+}
+export async function getSubmittedPracticeReview(actor: Actor, input: unknown): Promise<PracticeResult<SubmittedPracticeReview>> {
+  const denied = learnerOnly(actor);
+  if (denied) return denied;
+  const parsed = practiceAttemptSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  const result = await repository.getSubmittedPracticeReview(actor.id, parsed.data.setId, parsed.data.attemptId);
+  return "error" in result ? { error: { code: result.error, message: playerMessages[result.error] } } : { data: result };
 }

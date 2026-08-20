@@ -22,6 +22,7 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const [position, setPosition] = useState(0);
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
   const online = () => typeof navigator !== "undefined" && navigator.onLine;
   const [recovery, setRecovery] = useState<PracticeRecoveryState>(online() ? "online" : "offline");
   const [stale, setStale] = useState(false);
@@ -31,6 +32,7 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const draftQueue = useRef(Promise.resolve());
   const mutationQueue = useRef(Promise.resolve());
   const playerRef = useRef(player);
+  const submitKey = useRef<string | undefined>(undefined);
   const draftKey = namespacedDraftKey(accountId, player.attemptId, player.setVersionId);
   const item = player.items[position]!;
   const mediaUrl = (media: PracticePlayerData["items"][number]["media"][number]) => `/api/practice/media?attemptId=${player.attemptId}&setId=${player.setId}&setVersionId=${player.setVersionId}&mediaId=${media.id}&mediaKey=${encodeURIComponent(media.mediaKey)}&accountId=${encodeURIComponent(accountId)}`;
@@ -117,6 +119,20 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     await mutation;
   };
   const leave = async (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); if (stale) await openAttemptDraftStore.delete(draftKey); else await writeDraft(playerRef.current); await draftQueue.current; router.push("/learner"); };
+  const submit = async () => {
+    if (!online()) { setRecovery("offline"); setNotice("You are offline. Your practice remains open. Reconnect before submitting."); return; }
+    await mutationQueue.current;
+    setSaving(true);
+    try {
+      const current = playerRef.current;
+      submitKey.current ??= crypto.randomUUID();
+      const result = await fetch(`/api/practice/attempt/${current.attemptId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setId: current.setId, expectedRevision: current.revision, idempotencyKey: submitKey.current }) }).then((response) => response.json() as Promise<ApiResult>);
+      if (result.data) { await openAttemptDraftStore.delete(draftKey); router.push(`/learner/practice/${current.setId}/attempt/${current.attemptId}/review`); return; }
+      if (result.error?.code === "ATTEMPT_REVISION_CONFLICT" || result.error?.code === "ATTEMPT_SCOPE_MISMATCH" || result.error?.code === "ATTEMPT_FINALISED") { setStale(true); setRecovery("stale"); setConfirmingSubmit(false); setNotice("Your practice changed elsewhere. Reload the latest version or leave."); return; }
+      setNotice(result.error?.message ?? "Your practice could not be submitted. Please try again.");
+    } catch { setNotice("Your practice could not be submitted. Please check your connection and try again."); }
+    finally { setSaving(false); }
+  };
   const visibleResponse = stale && staleResponses[item.id] !== undefined ? staleResponses[item.id] : item.response;
   const pictures = item.media.filter((media) => media.type === "image");
   const audio = item.media.filter((media) => media.type === "audio");
@@ -130,6 +146,6 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     {item.engine === "audio_note_taking" && <label className="answer-field">Type the word, name or number you hear<input value={typeof visibleResponse === "string" || typeof visibleResponse === "number" ? visibleResponse : ""} disabled={stale} onChange={(event) => { editEpoch.current += 1; const current = playerRef.current; const next = { ...current, items: current.items.map((entry) => entry.id === item.id ? { ...entry, response: event.target.value } : entry) }; playerRef.current = next; setPlayer(next); void writeDraft(next); }} onBlur={(event) => void save(event.target.value || null)} /></label>}
     {item.engine === "word_bank_cloze" && <><label className="answer-field">Choose a word from the word bank. You can change it before you submit.<input value={typeof visibleResponse === "string" ? visibleResponse : ""} readOnly /></label><div className="word-bank">{item.options.map((option) => choice(option, option))}</div></>}
     {audio.map((media) => <span key={media.id}><audio ref={(element) => { if (element) audioRefs.current.set(media.id, element); else audioRefs.current.delete(media.id); }} preload="metadata" src={mediaUrl(media)} /><button type="button" className="secondary replay" disabled={saving || stale} onClick={() => void replay(media.id)}>Replay audio</button></span>)}
-    <p role="status" aria-live="polite">{notice}</p><div className="player-actions"><button type="button" className="secondary" disabled={saving || stale || position === 0} onClick={() => setPosition(position - 1)}>Previous</button><button type="button" disabled={saving || stale || position === player.items.length - 1} onClick={() => setPosition(position + 1)}>Next</button>{!stale && <a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a>}</div>
+    <p role="status" aria-live="polite">{notice}</p>{confirmingSubmit && <section className="submit-confirmation" aria-labelledby="submit-heading"><h2 id="submit-heading">Ready to submit?</h2><p>{player.items.filter((entry) => entry.response !== undefined).length} answered and {player.items.filter((entry) => entry.response === undefined).length} unanswered.</p><button type="button" className="secondary" onClick={() => setConfirmingSubmit(false)}>Review questions</button><button type="button" disabled={saving || stale} onClick={() => void submit()}>Submit anyway</button></section>}<div className="player-actions"><button type="button" className="secondary" disabled={saving || stale || position === 0} onClick={() => setPosition(position - 1)}>Previous</button><button type="button" disabled={saving || stale || position === player.items.length - 1} onClick={() => setPosition(position + 1)}>Next</button>{!stale && <><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a><button type="button" disabled={saving} onClick={() => online() ? setConfirmingSubmit(true) : void submit()}>Submit practice</button></>}</div>
   </section></main>;
 }

@@ -8,6 +8,7 @@ import {
   policyVersionSchema,
   type PolicyVersionInput,
 } from "@/features/curriculum/domain/contracts";
+import { finalisationResponse, finalTimingSnapshot } from "@/features/practice/infrastructure/repositories";
 const base: PolicyVersionInput = {
   canonicalId: "number-one",
   targetId: "018f0000-0000-7000-8000-000000000001",
@@ -55,6 +56,16 @@ describe("answer policy matching", () => {
     };
     expect(policyVersionSchema.safeParse(policy).success).toBe(true);
     expect(validateVectors(policy)).toEqual([]);
+  });
+  it("normalises numeric text only at finalisation before deterministic evaluation", () => {
+    const response = finalisationResponse(" one ", base);
+    expect(response).toBe(1);
+    expect(evaluateAnswer(response, base)).toBe("correct");
+    expect(finalisationResponse("cat", base)).toBe("cat");
+  });
+  it("uses one submitted instant for final saved and submitted timing", () => {
+    const submittedAt = new Date("2026-08-20T12:00:00.000Z");
+    expect(finalTimingSnapshot({ createdAt: new Date("2026-08-20T11:00:00.000Z") } as never, submittedAt)).toEqual({ startedAt: "2026-08-20T11:00:00.000Z", lastSavedAt: "2026-08-20T12:00:00.000Z", submittedAt: "2026-08-20T12:00:00.000Z" });
   });
   it("reserves teacher review for configured name and word policies", () => {
     expect(evaluateAnswer("one extra", base)).toBe("incorrect");

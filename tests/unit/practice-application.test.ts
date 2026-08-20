@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn(), preparePublishedPractice: vi.fn(), startPublishedPractice: vi.fn(), getOpenPracticeAttempt: vi.fn(), getPracticePlayer: vi.fn(), savePracticeResponse: vi.fn(), recordPracticePlayback: vi.fn() }));
+const dependencies = vi.hoisted(() => ({ listPublishedSetsForLearner: vi.fn(), listRecentSubmittedEvidence: vi.fn(), recordRecommendation: vi.fn(), preparePublishedPractice: vi.fn(), startPublishedPractice: vi.fn(), getOpenPracticeAttempt: vi.fn(), getPracticePlayer: vi.fn(), savePracticeResponse: vi.fn(), recordPracticePlayback: vi.fn(), submitPracticeAttempt: vi.fn(), getSubmittedPracticeReview: vi.fn() }));
 vi.mock("@/features/practice/infrastructure/repositories", () => dependencies);
-import { getLearnerHome, getPracticePlayer, preparePractice, recordPracticePlayback, savePracticeResponse, startPractice } from "@/features/practice/application/practice";
+import { getLearnerHome, getPracticePlayer, getSubmittedPracticeReview, preparePractice, recordPracticePlayback, savePracticeResponse, startPractice, submitPracticeAttempt } from "@/features/practice/application/practice";
 
 const learner = { id: "018f0000-0000-7000-8000-000000000001", role: "learner" as const, email: "learner@example.test", displayName: "Learner" };
 const row = (id: string, openLastSavedAt: Date | null = null, submittedAttemptId: string | null = null) => ({ id, title: `Set ${id}`, paper: "listening" as const, part: "1", estimatedDurationSeconds: 300, targetIds: ["animals"], topic: "Animals", taskType: "Picture choice", openLastSavedAt, submittedAttemptId });
@@ -94,5 +94,28 @@ describe("practice player mutations", () => {
     await expect(savePracticeResponse(learner, { ...input, value: "cat" })).resolves.toMatchObject({ error: { code: "ATTEMPT_REVISION_CONFLICT" } });
     dependencies.recordPracticePlayback.mockResolvedValue({ error: "ATTEMPT_FINALISED" });
     await expect(recordPracticePlayback(learner, { ...input, mediaId: "018f0000-0000-7000-8000-000000000004" })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
+  });
+});
+
+describe("practice submission and review", () => {
+  const input = { setId: learner.id, attemptId: "018f0000-0000-7000-8000-000000000002", expectedRevision: 3, idempotencyKey: "018f0000-0000-7000-8000-000000000005" };
+  beforeEach(() => { vi.clearAllMocks(); });
+  it("authorises and validates submission before server finalisation", async () => {
+    await expect(submitPracticeAttempt({ ...learner, role: "teacher" }, input)).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
+    await expect(submitPracticeAttempt(learner, { ...input, idempotencyKey: "invalid" })).resolves.toMatchObject({ error: { code: "INPUT_INVALID" } });
+    expect(dependencies.submitPracticeAttempt).not.toHaveBeenCalled();
+  });
+  it("returns the server-saved result for finalisation and idempotent retry", async () => {
+    const saved = { attemptId: input.attemptId, setId: input.setId, submittedAt: new Date("2026-08-20T12:00:00Z"), revision: 4 };
+    dependencies.submitPracticeAttempt.mockResolvedValue(saved);
+    await expect(submitPracticeAttempt(learner, input)).resolves.toEqual({ data: saved });
+    await expect(submitPracticeAttempt(learner, input)).resolves.toEqual({ data: saved });
+    expect(dependencies.submitPracticeAttempt).toHaveBeenCalledWith(learner.id, input);
+  });
+  it("releases review data only through the submitted review contract", async () => {
+    dependencies.getSubmittedPracticeReview.mockResolvedValue({ attemptId: input.attemptId, setId: input.setId, submittedAt: new Date(), revision: 4, title: "Animals", items: [{ id: "018f0000-0000-7000-8000-000000000003", position: 1, response: "cat", outcome: "correct", approvedAnswer: "cat", evidenceLabel: "secure" }] });
+    await expect(getSubmittedPracticeReview(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ data: { items: [expect.objectContaining({ approvedAnswer: "cat", outcome: "correct" })] } });
+    dependencies.getSubmittedPracticeReview.mockResolvedValue({ error: "ATTEMPT_FINALISED" });
+    await expect(getSubmittedPracticeReview(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
   });
 });
