@@ -7,5 +7,5 @@ export default async function OpenAttemptPlayer({ params }: { params: Promise<{ 
   const [actor, values] = await Promise.all([requireRole(["learner"]), params]);
   const result = await getPracticePlayer(actor, values);
   if ("error" in result) notFound();
-  return <PracticePlayer player={result.data} />;
+  return <PracticePlayer player={result.data} accountId={actor.id} />;
 }

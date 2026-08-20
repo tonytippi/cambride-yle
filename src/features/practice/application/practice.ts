@@ -1,6 +1,6 @@
 import type { Actor } from "@/features/identity/domain/contracts";
 import { z } from "zod";
-import { learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
+import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
 
 const recommendationVersion = "learner-home-v1";
@@ -121,6 +121,6 @@ export async function recordPracticePlayback(actor: Actor, input: unknown): Prom
 }
 export async function getAttemptMedia(actor: Actor, input: unknown) {
   if (actor.role !== "learner") return undefined;
-  const parsed = playbackSchema.pick({ setId: true, attemptId: true, mediaId: true }).safeParse(input);
-  return parsed.success ? repository.getAttemptMedia(actor.id, parsed.data.setId, parsed.data.attemptId, parsed.data.mediaId) : undefined;
+  const parsed = attemptMediaSchema.safeParse(input);
+  return parsed.success ? repository.getAttemptMedia(actor.id, parsed.data.setId, parsed.data.attemptId, parsed.data.setVersionId, parsed.data.mediaId, parsed.data.mediaKey) : undefined;
 }
