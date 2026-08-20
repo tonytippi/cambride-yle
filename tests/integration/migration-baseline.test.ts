@@ -85,6 +85,10 @@ describe("migration baseline", () => {
       "db/migrations/0020_practice_attempt_submission_review.sql",
       "utf8",
     );
+    const evidenceProjectionMigration = await readFile(
+      "db/migrations/0021_teacher_evidence_projection.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -251,6 +255,9 @@ describe("migration baseline", () => {
     expect(submissionReviewMigration).toContain("PRACTICE_ATTEMPT_REVIEW_SNAPSHOT_INCOMPLETE");
     expect(submissionReviewMigration).toContain("DEFERRABLE INITIALLY DEFERRED");
     expect(submissionReviewMigration).toContain("a.status = 'submitted'");
+    expect(journal).toContain("0021_teacher_evidence_projection");
+    expect(evidenceProjectionMigration).toContain('CREATE TABLE "submitted_evidence_facts"');
+    expect(evidenceProjectionMigration).toContain("AUDIT_EVENT_IMMUTABLE");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {

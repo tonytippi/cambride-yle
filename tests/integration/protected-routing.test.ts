@@ -23,4 +23,11 @@ describe("protected routing", () => {
     dependencies.cookie.mockReturnValue({ value: "opaque-session" }); dependencies.getActorBySessionToken.mockResolvedValue({ id: "opaque-actor", role: "teacher", email: "teacher@example.test", displayName: "Teacher" });
     await expect(requireRole(["admin"])).rejects.toThrow(`REDIRECT:/teacher?notice=${encodeURIComponent("You do not have access to that page.")}`);
   });
+  it("allows every active staff role to enter the teacher evidence route", async () => {
+    dependencies.cookie.mockReturnValue({ value: "staff-session" });
+    for (const role of ["teacher", "academic_lead", "admin"] as const) {
+      dependencies.getActorBySessionToken.mockResolvedValue({ id: "opaque-staff", role, email: "staff@example.test", displayName: "Staff" });
+      await expect(requireRole(["teacher", "academic_lead", "admin"])).resolves.toMatchObject({ role });
+    }
+  });
 });

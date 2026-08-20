@@ -40,6 +40,7 @@ export const practiceAttempts = pgTable("practice_attempts", {
   check("practice_attempts_lifecycle_check", sql`((${table.status} = 'open' AND ${table.submittedAt} IS NULL) OR (${table.status} = 'submitted' AND ${table.submittedAt} IS NOT NULL)) AND ${table.lastSavedAt} >= ${table.createdAt} AND (${table.submittedAt} IS NULL OR ${table.submittedAt} >= ${table.createdAt}) AND ${table.practiceSetVersionId} = ${table.practiceSetId} AND ${table.revision} >= 0`),
   index("practice_attempts_learner_set_idx").on(table.learnerId, table.practiceSetId, table.status),
   unique("practice_attempts_id_set_unique").on(table.id, table.practiceSetId),
+  unique("practice_attempts_id_learner_set_unique").on(table.id, table.learnerId, table.practiceSetId),
   unique("practice_attempts_finalisation_key_unique").on(table.id, table.finalisationKey),
   uniqueIndex("practice_attempts_one_open_per_learner_set").on(table.learnerId, table.practiceSetId).where(sql`${table.status} = 'open'`),
 ]);
@@ -86,6 +87,7 @@ export const practiceAttemptReviewItems = pgTable("practice_attempt_review_items
   curriculumTags: jsonb("curriculum_tags").notNull(),
 }, (table) => [
   unique("practice_attempt_review_items_attempt_item_unique").on(table.attemptId, table.practiceSetItemId),
+  unique("practice_attempt_review_items_id_attempt_unique").on(table.id, table.attemptId),
   index("practice_attempt_review_items_attempt_idx").on(table.attemptId),
 ]);
 

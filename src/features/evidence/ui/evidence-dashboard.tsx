@@ -1,0 +1,10 @@
+import { actionableText } from "../domain/evidence-state";
+import type { CentreEvidence } from "../application/get-centre-evidence";
+
+const stateDescription = (state: string) => state === "not assessed yet" ? "Insufficient completed evidence." : state;
+export function EvidenceDashboard({ evidence, learnerId, error }: { evidence?: CentreEvidence; learnerId?: string; error?: string }) {
+  const title = learnerId ? "Learner evidence detail" : "Centre evidence and actionable gaps";
+  if (error) return <section className="evidence-dashboard" aria-live="polite"><h1>{title}</h1><p>{error}</p>{learnerId && <p><a className="account-link" href="/teacher">Return to centre evidence</a></p>}</section>;
+  if (!evidence || !evidence.rows.length) return <section className="evidence-dashboard" aria-live="polite"><h1>{title}</h1><p>No completed practice yet for this selection.</p>{learnerId && <p><a className="account-link" href="/teacher">Return to centre evidence</a></p>}</section>;
+  return <section className="evidence-dashboard"><p className="eyebrow">Staff evidence</p><h1>{title}</h1><p>Based on the latest submitted practice for each activity in the last 30 days.</p>{learnerId && <p><a className="account-link" href="/teacher">Return to centre evidence</a></p>}<div className="evidence-rows" role="list">{evidence.rows.map((row) => <article className="evidence-row" id={`learner-${row.learnerId}`} role="listitem" key={`${row.learnerId}-${row.paper}-${row.part}-${row.languageTarget}`}><h2>{row.learnerName}</h2><p>{row.paper.replace("_", " ")} Part {row.part} · {row.languageTarget}</p><p><strong>State: {stateDescription(row.state)}</strong></p><p>{actionableText(row.state, row.paper, row.part, row.languageTarget)}</p><p>{row.state === "not assessed yet" ? "Insufficient assessable outcomes." : `${row.correctOutcomes} correct from ${row.assessableOutcomes} assessable outcomes.`}</p>{!learnerId && <a className="account-link" href={`/teacher?learner=${row.learnerId}`} aria-label={`Open evidence detail for ${row.learnerName}`}>Open learner evidence detail</a>}</article>)}</div></section>;
+}

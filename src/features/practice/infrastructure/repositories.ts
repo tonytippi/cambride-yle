@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   curriculumGuidance,
+  curriculumTargets,
   practiceAttemptEvidence,
   practiceAttempts,
   practiceAttemptPlaybackEvents,
@@ -10,6 +11,7 @@ import {
   practiceSetItems,
   practiceSetItemMedia,
   practiceSets,
+  submittedEvidenceFacts,
 } from "@/../db/schema";
 import { evaluateAnswer, normaliseAnswer } from "@/features/curriculum/domain/answer-policy";
 import { database } from "@/infrastructure/database/client";
@@ -211,6 +213,17 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
       const policy = item.answerPolicy as StoredPolicy;
       return { item, response, outcome: response === undefined ? "unanswered" : evaluateAnswer(finalisationResponse(response, policy), policy) };
     });
+    const targetIdsFor = (tags: unknown) => {
+      const value = tags as { primaryTargetId?: unknown; supportingTargetIds?: unknown } | null;
+      return [
+        ...(typeof value?.primaryTargetId === "string" ? [value.primaryTargetId] : []),
+        ...(Array.isArray(value?.supportingTargetIds) ? value.supportingTargetIds.filter((id): id is string => typeof id === "string") : []),
+      ];
+    };
+    const targetIds = [...new Set(items.flatMap((item) => targetIdsFor(item.tags)))];
+    const targets = targetIds.length ? await tx.select({ id: curriculumTargets.id, canonicalId: curriculumTargets.canonicalId }).from(curriculumTargets).where(inArray(curriculumTargets.id, targetIds)) : [];
+    // A fact cannot be safely projected without every submitted target dimension.
+    if (targets.length !== targetIds.length) return { error: "ITEM_INVALID" };
     const label = evidenceFor(scored.map((entry) => entry.outcome));
     const submittedAt = new Date();
     const reviewSnapshotItems = items.map((item) => ({ id: item.id, position: item.position }));
@@ -219,11 +232,26 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
     for (const { item, response, outcome } of scored) {
       const policy = item.answerPolicy as StoredPolicy;
       const choices = safeOptions(item.options)!;
-      await tx.insert(practiceAttemptReviewItems).values({ id: uuidv7(), attemptId: attempt.id, practiceSetItemId: item.id, position: item.position, response: response ?? null, responseLabel: answerLabel(response as string | boolean | number | undefined, item.engine as LearnerEngine, choices), outcome, evidenceLabel: label, approvedAnswer: policy.canonicalAnswer, approvedAnswerLabel: answerLabel(policy.canonicalAnswer, item.engine as LearnerEngine, choices)!, presentation: { engine: item.engine, prompt: item.prompt, options: choices }, explanation: explanationFrom(item.feedback), answerPolicyVersion: policy.policyId ?? policy.canonicalId ?? "published-snapshot", curriculumTags: item.tags });
+      const tags = item.tags as { primaryTargetId?: unknown; supportingTargetIds?: unknown } | null;
+      const itemTargetIds = targetIdsFor(tags);
+      const evidenceTargets = itemTargetIds.map((targetId) => {
+        const target = targets.find((entry) => entry.id === targetId)!;
+        return { id: target.id, label: target.canonicalId };
+      });
+      await tx.insert(practiceAttemptReviewItems).values({ id: uuidv7(), attemptId: attempt.id, practiceSetItemId: item.id, position: item.position, response: response ?? null, responseLabel: answerLabel(response as string | boolean | number | undefined, item.engine as LearnerEngine, choices), outcome, evidenceLabel: label, approvedAnswer: policy.canonicalAnswer, approvedAnswerLabel: answerLabel(policy.canonicalAnswer, item.engine as LearnerEngine, choices)!, presentation: { engine: item.engine, prompt: item.prompt, options: choices }, explanation: explanationFrom(item.feedback), answerPolicyVersion: policy.policyId ?? policy.canonicalId ?? "published-snapshot", curriculumTags: { ...(tags ?? {}), evidenceTargets } });
+    }
+    const reviewItems = await tx.select({ id: practiceAttemptReviewItems.id, practiceSetItemId: practiceAttemptReviewItems.practiceSetItemId, outcome: practiceAttemptReviewItems.outcome }).from(practiceAttemptReviewItems).where(eq(practiceAttemptReviewItems.attemptId, attempt.id));
+    for (const reviewItem of reviewItems) {
+      const source = items.find((item) => item.id === reviewItem.practiceSetItemId)!;
+      const itemTargetIds = targetIdsFor(source.tags);
+      for (const targetId of itemTargetIds) {
+        const target = targets.find((entry) => entry.id === targetId)!;
+        await tx.insert(submittedEvidenceFacts).values({ id: uuidv7(), attemptId: attempt.id, reviewItemId: reviewItem.id, learnerId, practiceSetId: attempt.practiceSetId, paper: set.paper, part: set.part, languageTargetId: target.id, languageTarget: target.canonicalId, automaticOutcome: reviewItem.outcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", submittedAt });
+      }
     }
     const tags = items.flatMap((item) => {
-      const value = item.tags as { targetIds?: unknown; guidanceId?: unknown };
-      return Array.isArray(value?.targetIds) ? value.targetIds.filter((id): id is string => typeof id === "string") : typeof value?.guidanceId === "string" ? [value.guidanceId] : [];
+      const value = item.tags as { primaryTargetId?: unknown; supportingTargetIds?: unknown; guidanceId?: unknown };
+      return [...targetIdsFor(value), ...(typeof value?.guidanceId === "string" ? [value.guidanceId] : [])];
     });
     for (const area of new Set(tags)) await tx.insert(practiceAttemptEvidence).values({ id: uuidv7(), attemptId: attempt.id, practiceSetId: attempt.practiceSetId, practiceAreaId: area, label });
     return { attemptId: updated.id, setId: updated.practiceSetId, submittedAt: updated.submittedAt!, revision: updated.revision };

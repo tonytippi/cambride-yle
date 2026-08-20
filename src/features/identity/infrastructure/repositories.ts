@@ -10,6 +10,7 @@ const toActor = (account: typeof accounts.$inferSelect): Actor => ({ id: account
 const throttleKey = (email: string, origin: string) => createHash("sha256").update(`${canonicalEmail(email)}\0${origin}`).digest("hex");
 
 export async function getAccountByEmail(email: string, db: Database = database) { return (await db.select().from(accounts).where(eq(accounts.canonicalEmail, canonicalEmail(email))).limit(1))[0]; }
+export async function getAccountById(id: string, db: Database = database) { return (await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id)).limit(1))[0]; }
 export async function getActorBySessionToken(token: string, db: Database = database): Promise<Actor | undefined> {
   const verifierHash = createHash("sha256").update(token).digest("hex");
   const rows = await db.select({ account: accounts }).from(sessions).innerJoin(accounts, eq(sessions.accountId, accounts.id)).where(and(eq(sessions.verifierHash, verifierHash), isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()), eq(accounts.status, "active"))).limit(1);
@@ -72,4 +73,7 @@ export async function promoteGoogleAdmin(accountId: string, db: Database = datab
   await db.insert(auditEvents).values({ id: uuidv7(), action: "ACCOUNT_PROMOTED_GOOGLE_ADMIN", targetId: accountId });
 }
 export async function auditOidcProvisioning(accountId: string, db: Database = database) { await db.insert(auditEvents).values({ id: uuidv7(), action: "OIDC_ACCOUNT_PROVISIONED", targetId: accountId }); }
+export async function recordEvidenceRead(actorId: string, learnerId: string | undefined, outcome: "SUCCESS" | "NO_DATA", db: Database = database) {
+  await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "EVIDENCE_READ", targetId: learnerId, targetScope: learnerId ? "LEARNER_DETAIL" : "CENTRE_WIDE", outcome });
+}
 export { toActor };

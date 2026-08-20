@@ -39,8 +39,10 @@ export const auditEvents = pgTable("audit_events", {
   actorId: uuid("actor_id").references(() => accounts.id),
   action: text("action").notNull(),
   targetId: uuid("target_id").references(() => accounts.id),
+  outcome: text("outcome"),
+  targetScope: text("target_scope"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+}, (table) => [check("audit_events_evidence_read_outcome_check", sql`(${table.action} <> 'EVIDENCE_READ' AND ${table.outcome} IS NULL AND ${table.targetScope} IS NULL) OR (${table.action} = 'EVIDENCE_READ' AND ${table.actorId} IS NOT NULL AND ${table.outcome} IN ('SUCCESS', 'NO_DATA') AND ((${table.targetScope} = 'CENTRE_WIDE' AND ${table.targetId} IS NULL) OR (${table.targetScope} = 'LEARNER_DETAIL' AND ${table.targetId} IS NOT NULL)))`)]);
 
 export const signInThrottles = pgTable("sign_in_throttles", {
   keyHash: text("key_hash").primaryKey(),
