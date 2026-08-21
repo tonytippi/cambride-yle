@@ -1,8 +1,9 @@
-import { check, foreignKey, index, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { check, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { practiceAttempts, practiceAttemptReviewItems } from "./practice";
 import { practiceSets } from "./content";
 import { curriculumTargets } from "./curriculum";
+import { accounts } from "./identity";
 
 export const evidenceOutcome = pgEnum("evidence_outcome", ["correct", "incorrect", "unanswered", "needs_teacher_review"]);
 
@@ -31,4 +32,21 @@ export const submittedEvidenceFacts = pgTable("submitted_evidence_facts", {
   index("submitted_evidence_facts_latest_idx").on(table.learnerId, table.practiceSetId, table.submittedAt, table.attemptId),
   index("submitted_evidence_facts_target_idx").on(table.paper, table.part, table.languageTargetId, table.submittedAt),
   index("submitted_evidence_facts_filter_idx").on(table.learnerId, table.paper, table.part, table.practiceSetId, table.submittedAt),
+]);
+
+// Versions are appended against the immutable submitted review item, never against its facts.
+export const teacherEvidenceResolutions = pgTable("teacher_evidence_resolutions", {
+  id: uuid("id").primaryKey(),
+  reviewItemId: uuid("review_item_id").notNull().references(() => practiceAttemptReviewItems.id),
+  revision: integer("revision").notNull(),
+  effectiveOutcome: evidenceOutcome("effective_outcome").notNull(),
+  reason: text("reason").notNull(),
+  resolverId: uuid("resolver_id").notNull().references(() => accounts.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("teacher_evidence_resolutions_review_revision_unique").on(table.reviewItemId, table.revision),
+  check("teacher_evidence_resolutions_revision_check", sql`${table.revision} >= 1`),
+  check("teacher_evidence_resolutions_outcome_check", sql`${table.effectiveOutcome} IN ('correct', 'incorrect', 'unanswered')`),
+  check("teacher_evidence_resolutions_reason_check", sql`btrim(${table.reason}) <> ''`),
+  index("teacher_evidence_resolutions_current_idx").on(table.reviewItemId, table.revision),
 ]);

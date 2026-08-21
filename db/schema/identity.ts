@@ -38,11 +38,11 @@ export const auditEvents = pgTable("audit_events", {
   id: uuid("id").primaryKey(),
   actorId: uuid("actor_id").references(() => accounts.id),
   action: text("action").notNull(),
-  targetId: uuid("target_id").references(() => accounts.id),
+  targetId: uuid("target_id"),
   outcome: text("outcome"),
   targetScope: text("target_scope"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-}, (table) => [check("audit_events_evidence_read_outcome_check", sql`(${table.action} <> 'EVIDENCE_READ' AND ${table.outcome} IS NULL AND ${table.targetScope} IS NULL) OR (${table.action} = 'EVIDENCE_READ' AND ${table.actorId} IS NOT NULL AND ${table.outcome} IN ('SUCCESS', 'NO_DATA') AND ((${table.targetScope} = 'CENTRE_WIDE' AND ${table.targetId} IS NULL) OR (${table.targetScope} = 'LEARNER_DETAIL' AND ${table.targetId} IS NOT NULL)))`)]);
+}, (table) => [check("audit_events_evidence_read_outcome_check", sql`(${table.action} NOT IN ('EVIDENCE_READ', 'EVIDENCE_RESOLUTION') AND ${table.outcome} IS NULL AND ${table.targetScope} IS NULL) OR (${table.action} = 'EVIDENCE_READ' AND ${table.actorId} IS NOT NULL AND ${table.outcome} IN ('SUCCESS', 'NO_DATA') AND ((${table.targetScope} = 'CENTRE_WIDE' AND ${table.targetId} IS NULL) OR (${table.targetScope} = 'LEARNER_DETAIL' AND ${table.targetId} IS NOT NULL))) OR (${table.action} = 'EVIDENCE_RESOLUTION' AND ${table.actorId} IS NOT NULL AND ${table.targetId} IS NOT NULL AND ${table.targetScope} = 'REVIEW_ITEM' AND ${table.outcome} IN ('SUCCESS', 'CONFLICT'))`)]);
 
 export const signInThrottles = pgTable("sign_in_throttles", {
   keyHash: text("key_hash").primaryKey(),

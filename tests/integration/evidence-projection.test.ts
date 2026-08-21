@@ -46,6 +46,49 @@ describe("submitted evidence projection migration", () => {
     expect(repository).toContain("new Map(details.map((detail) => [detail.reviewItemId, detail]))");
   });
 
+  it("defines append-only, evidence-scoped resolutions and action-scoped audit targets", async () => {
+    const migration = await readFile("db/migrations/0024_teacher_evidence_resolution.sql", "utf8");
+    expect(migration).toContain('CREATE TABLE "teacher_evidence_resolutions"');
+    expect(migration).toContain("TEACHER_EVIDENCE_RESOLUTION_IMMUTABLE");
+    expect(migration).toContain('FROM "submitted_evidence_facts" fact');
+    expect(migration).toContain("enforce_audit_event_target_scope");
+    expect(migration).toContain("NEW.action = 'EVIDENCE_RESOLUTION'");
+    expect(migration).toContain("FROM \"accounts\" WHERE id = NEW.target_id");
+  });
+
+  it("persists effective resolution history while protecting submitted review output", async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+    try {
+      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('teacher_evidence_resolutions', 'submitted_evidence_facts')`;
+      if (tables.length !== 2) return;
+      await sql.begin(async (transaction) => {
+        const suffix = crypto.randomUUID();
+        const leadId = crypto.randomUUID(); const learnerId = crypto.randomUUID(); const targetId = crypto.randomUUID(); const setId = crypto.randomUUID(); const attemptId = crypto.randomUUID(); const itemId = crypto.randomUUID(); const reviewId = crypto.randomUUID(); const noFactReviewId = crypto.randomUUID(); const submittedAt = new Date();
+        await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${leadId}, ${`lead-${suffix}@example.test`}, ${`lead-${suffix}@example.test`}, 'Lead', 'academic_lead'), (${learnerId}, ${`learner-${suffix}@example.test`}, ${`learner-${suffix}@example.test`}, 'Learner', 'learner')`;
+        await transaction`INSERT INTO curriculum_targets (id, canonical_id, category, guidance, created_by) VALUES (${targetId}, ${`target-${suffix}`}, 'vocabulary', 'Target', ${leadId})`;
+        await transaction`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${setId}, 'Set', 'listening', '1', 60, ${JSON.stringify([targetId])}::jsonb, ${leadId})`;
+        await transaction`INSERT INTO practice_attempts (id, learner_id, practice_set_id, practice_set_version_id, status, submitted_at, last_saved_at, created_at, finalisation_key, submitted_presentation, expected_review_item_count, review_snapshot_items, final_timing, playback_snapshot) VALUES (${attemptId}, ${learnerId}, ${setId}, ${setId}, 'submitted', ${submittedAt}, ${submittedAt}, ${submittedAt}, ${crypto.randomUUID()}, '{"paper":"listening","part":"1"}'::jsonb, 1, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb)`;
+        await transaction`ALTER TABLE practice_attempt_review_items DISABLE TRIGGER ALL`;
+        await transaction`INSERT INTO practice_attempt_review_items (id, attempt_id, practice_set_item_id, position, response, outcome, evidence_label, approved_answer, approved_answer_label, presentation, answer_policy_version, curriculum_tags) VALUES (${reviewId}, ${attemptId}, ${itemId}, 1, '"learner response"'::jsonb, 'needs_teacher_review', 'not_assessed_yet', '"approved"'::jsonb, 'Approved', '{}'::jsonb, 'fixture', ${transaction.json({ evidenceTargets: [{ id: targetId, label: `target-${suffix}` }] })})`;
+        await transaction`INSERT INTO practice_attempt_review_items (id, attempt_id, practice_set_item_id, position, outcome, evidence_label, approved_answer, approved_answer_label, presentation, answer_policy_version, curriculum_tags) VALUES (${noFactReviewId}, ${attemptId}, ${crypto.randomUUID()}, 2, 'needs_teacher_review', 'not_assessed_yet', '"approved"'::jsonb, 'Approved', '{}'::jsonb, 'fixture', ${transaction.json({ evidenceTargets: [{ id: targetId, label: `target-${suffix}` }] })})`;
+        await transaction`ALTER TABLE practice_attempt_review_items ENABLE TRIGGER ALL`;
+        await transaction`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, dimensions, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewId}, ${learnerId}, ${setId}, 'listening', '1', ${targetId}, ${`target-${suffix}`}, 'needs_teacher_review', '{}'::jsonb, ${submittedAt})`;
+        await transaction`INSERT INTO teacher_evidence_resolutions (id, review_item_id, revision, effective_outcome, reason, resolver_id) VALUES (${crypto.randomUUID()}, ${reviewId}, 1, 'correct', 'Accepted answer', ${leadId}), (${crypto.randomUUID()}, ${reviewId}, 2, 'incorrect', 'Correction', ${leadId})`;
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE teacher_evidence_resolutions SET reason = 'Changed' WHERE review_item_id = ${reviewId}`)).rejects.toThrow(/TEACHER_EVIDENCE_RESOLUTION_IMMUTABLE/);
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO teacher_evidence_resolutions (id, review_item_id, revision, effective_outcome, reason, resolver_id) VALUES (${crypto.randomUUID()}, ${reviewId}, 2, 'correct', 'Stale', ${leadId})`)).rejects.toThrow(/teacher_evidence_resolutions_review_revision_unique/);
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO teacher_evidence_resolutions (id, review_item_id, revision, effective_outcome, reason, resolver_id) VALUES (${crypto.randomUUID()}, ${noFactReviewId}, 1, 'correct', 'No evidence fact', ${leadId})`)).rejects.toThrow(/TEACHER_RESOLUTION_SCOPE_INVALID/);
+        const current = await transaction<{ effective_outcome: string; revision: number }[]>`SELECT effective_outcome::text, revision FROM teacher_evidence_resolutions WHERE review_item_id = ${reviewId} ORDER BY revision DESC LIMIT 1`;
+        expect(current).toEqual([{ effective_outcome: "incorrect", revision: 2 }]);
+        const effective = await transaction<{ effective_outcome: string; resolution_revision: number }[]>`SELECT COALESCE((SELECT effective_outcome::text FROM teacher_evidence_resolutions resolution WHERE resolution.review_item_id = fact.review_item_id ORDER BY revision DESC LIMIT 1), fact.automatic_outcome::text) AS effective_outcome, COALESCE((SELECT revision FROM teacher_evidence_resolutions resolution WHERE resolution.review_item_id = fact.review_item_id ORDER BY revision DESC LIMIT 1), 0) AS resolution_revision FROM submitted_evidence_facts fact WHERE fact.review_item_id = ${reviewId}`;
+        expect(effective).toEqual([{ effective_outcome: "incorrect", resolution_revision: 2 }]);
+        const review = await transaction<{ outcome: string; response: string }[]>`SELECT outcome, response::text FROM practice_attempt_review_items WHERE id = ${reviewId}`;
+        expect(review).toEqual([{ outcome: "needs_teacher_review", response: '"learner response"' }]);
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO audit_events (id, actor_id, action, target_id, target_scope, outcome) VALUES (${crypto.randomUUID()}, ${leadId}, 'EVIDENCE_RESOLUTION', ${crypto.randomUUID()}, 'REVIEW_ITEM', 'SUCCESS')`)).rejects.toThrow(/AUDIT_EVENT_TARGET_SCOPE_INVALID/);
+        throw new Error("ROLLBACK_TEST_TRANSACTION");
+      }).catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "ROLLBACK_TEST_TRANSACTION") throw error; });
+    } finally { await sql.end(); }
+  });
+
   it("rejects forged fact dimensions and malformed EVIDENCE_READ audit rows in PostgreSQL", async () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
     try {

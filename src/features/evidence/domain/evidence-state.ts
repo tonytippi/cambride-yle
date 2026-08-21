@@ -11,9 +11,10 @@ export function actionableText(state: EvidenceState, paper: string, part: string
   return `Not assessed yet: complete more practice for ${selection}`;
 }
 
-export function evidenceState(facts: Pick<SubmittedEvidenceFact, "automaticOutcome">[]): EvidenceSummary {
-  const assessable = facts.filter((fact) => fact.automaticOutcome === "correct" || fact.automaticOutcome === "incorrect" || fact.automaticOutcome === "unanswered");
-  const correct = assessable.filter((fact) => fact.automaticOutcome === "correct").length;
+export function evidenceState(facts: Array<Pick<SubmittedEvidenceFact, "automaticOutcome"> & Partial<Pick<SubmittedEvidenceFact, "effectiveOutcome">>>): EvidenceSummary {
+  const outcome = (fact: Pick<SubmittedEvidenceFact, "automaticOutcome"> & Partial<Pick<SubmittedEvidenceFact, "effectiveOutcome">>) => fact.effectiveOutcome ?? fact.automaticOutcome;
+  const assessable = facts.filter((fact) => ["correct", "incorrect", "unanswered"].includes(outcome(fact)));
+  const correct = assessable.filter((fact) => outcome(fact) === "correct").length;
   if (assessable.length < 3) return { state: "not assessed yet", assessableOutcomes: assessable.length, correctOutcomes: correct };
   const rate = correct / assessable.length;
   return { state: rate < 0.6 ? "needs practice" : rate < 0.8 ? "building" : "secure", assessableOutcomes: assessable.length, correctOutcomes: correct };

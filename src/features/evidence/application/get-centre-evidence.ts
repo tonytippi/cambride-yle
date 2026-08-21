@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { Actor } from "@/features/identity/domain/contracts";
 import { authorise } from "@/features/identity/application/auth";
-import { getActiveLearnerById, recordEvidenceRead } from "@/features/identity/infrastructure/repositories";
-import { submittedEvidenceReader } from "../infrastructure/repositories";
+import { getActiveLearnerById, recordEvidenceRead, recordEvidenceResolution } from "@/features/identity/infrastructure/repositories";
+import { appendTeacherEvidenceResolution, submittedEvidenceReader } from "../infrastructure/repositories";
 import { evidenceState, latestFactsPerSet, type EvidenceState } from "../domain/evidence-state";
 import type { SubmittedEvidenceDetail, SubmittedEvidenceFilter } from "@/features/practice/application/evidence-contract";
 
@@ -31,4 +31,22 @@ export async function getCentreEvidence(actor: Actor, input: unknown = {}): Prom
   const rows = [...groups.values()].map((group) => ({ learnerId: group[0]!.learnerId, learnerName: group[0]!.learnerName, paper: group[0]!.paper, part: group[0]!.part, languageTarget: group[0]!.languageTarget, ...evidenceState(group) })).sort((a, b) => a.learnerName.localeCompare(b.learnerName, "en-GB") || a.paper.localeCompare(b.paper) || a.part.localeCompare(b.part) || a.languageTarget.localeCompare(b.languageTarget, "en-GB"));
   await recordEvidenceRead(actor.id, filter.learnerId, rows.length || details.length ? "SUCCESS" : "NO_DATA");
   return { data: { rows, details, readAt: now, filter } };
+}
+
+const resolutionSchema = z.object({ reviewItemId: z.string().uuid(), outcome: z.enum(["correct", "incorrect", "unanswered"]), reason: z.string().trim().min(1).max(500), revision: z.number().int().min(0) }).strict();
+export type ResolutionResult = { data: { revision: number; effectiveOutcome: "correct" | "incorrect" | "unanswered" } } | { error: { code: "INPUT_INVALID" | "RESOLUTION_TARGET_INVALID" | "TEACHER_RESOLUTION_CONFLICT"; message: string } };
+
+export async function resolveUncertainItemOutcome(actor: Actor, input: unknown): Promise<ResolutionResult> {
+  authorise(actor, ["academic_lead", "admin"]);
+  const parsed = resolutionSchema.safeParse(input);
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid resolution." } };
+  const result = await appendTeacherEvidenceResolution({ reviewItemId: parsed.data.reviewItemId, outcome: parsed.data.outcome, reason: parsed.data.reason, expectedRevision: parsed.data.revision, resolverId: actor.id });
+  if ("error" in result) {
+    if (result.error === "TEACHER_RESOLUTION_CONFLICT") {
+      try { await recordEvidenceResolution(actor.id, parsed.data.reviewItemId, "CONFLICT"); } catch { /* Conflict evidence is safe best-effort after the mutation transaction has ended. */ }
+      return { error: { code: result.error, message: "This item was updated by someone else. Refresh and try again." } };
+    }
+    return { error: { code: "RESOLUTION_TARGET_INVALID", message: "Choose a valid resolution." } };
+  }
+  return { data: result };
 }

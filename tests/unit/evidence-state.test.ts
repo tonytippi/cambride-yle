@@ -11,6 +11,14 @@ describe("evidence state", () => {
     expect(evidenceState([fact("correct"), fact("correct"), fact("correct"), fact("incorrect"), fact("incorrect")]).state).toBe("building");
     expect(evidenceState([fact("correct"), fact("correct"), fact("correct"), fact("correct"), fact("incorrect")]).state).toBe("secure");
   });
+  it("uses a resolved effective outcome without changing unresolved handling", () => {
+    expect(evidenceState([
+      { automaticOutcome: "needs_teacher_review", effectiveOutcome: "correct" },
+      { automaticOutcome: "correct", effectiveOutcome: "correct" },
+      { automaticOutcome: "incorrect", effectiveOutcome: "incorrect" },
+    ])).toEqual({ state: "building", assessableOutcomes: 3, correctOutcomes: 2 });
+    expect(evidenceState([{ automaticOutcome: "needs_teacher_review", effectiveOutcome: "needs_teacher_review" }])).toEqual({ state: "not assessed yet", assessableOutcomes: 0, correctOutcomes: 0 });
+  });
 
   it("keeps only facts from the latest submitted attempt for every learner and set", () => {
     const latest = new Date("2026-08-20T12:00:00Z");

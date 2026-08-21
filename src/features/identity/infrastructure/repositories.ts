@@ -77,4 +77,7 @@ export async function auditOidcProvisioning(accountId: string, db: Database = da
 export async function recordEvidenceRead(actorId: string, learnerId: string | undefined, outcome: "SUCCESS" | "NO_DATA", db: Database = database) {
   await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "EVIDENCE_READ", targetId: learnerId, targetScope: learnerId ? "LEARNER_DETAIL" : "CENTRE_WIDE", outcome });
 }
+export async function recordEvidenceResolution(actorId: string, reviewItemId: string, outcome: "SUCCESS" | "CONFLICT", db: Database = database) {
+  await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "EVIDENCE_RESOLUTION", targetId: reviewItemId, targetScope: "REVIEW_ITEM", outcome });
+}
 export { toActor };

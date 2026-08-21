@@ -97,6 +97,10 @@ describe("migration baseline", () => {
       "db/migrations/0022_teacher_evidence_filter_drilldown.sql",
       "utf8",
     );
+    const evidenceResolutionMigration = await readFile(
+      "db/migrations/0024_teacher_evidence_resolution.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -272,6 +276,9 @@ describe("migration baseline", () => {
     expect(journal).toContain("0022_teacher_evidence_filter_drilldown");
     expect(evidenceFilterMigration).toContain('ADD COLUMN "dimensions" jsonb NOT NULL');
     expect(evidenceFilterMigration).toContain("SUBMITTED_EVIDENCE_FACT_DIMENSIONS_INVALID");
+    expect(journal).toContain("0024_teacher_evidence_resolution");
+    expect(evidenceResolutionMigration).toContain('CREATE TABLE "teacher_evidence_resolutions"');
+    expect(evidenceResolutionMigration).toContain("TEACHER_EVIDENCE_RESOLUTION_IMMUTABLE");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {

@@ -169,6 +169,13 @@
       "when": 1788912000000,
       "tag": "0023_content_evidence_dimensions",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788998400000,
+      "tag": "0024_teacher_evidence_resolution",
+      "breakpoints": true
     }
   ]
 }
