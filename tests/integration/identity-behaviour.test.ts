@@ -90,14 +90,14 @@ describe("identity I/O matrix without external services", () => {
     expect(learner.headers.get("location")).toBe("http://app.test/learner");
   });
 
-  it("uses the real Google provisioning use case to promote configured admins and create new learners", async () => {
+  it("uses ADMIN_EMAILS only when provisioning new Google accounts and preserves existing account roles", async () => {
     dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValueOnce({ ...actor, id: "existing", role: "learner", status: "active" }); dependencies.repository.createSession.mockResolvedValue("session");
     const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
-    const promoted = await realSignInWithGoogle({ subject: "admin-sub", email: "admin@example.test", displayName: "Admin" }, ["admin@example.test"]);
-    expect(promoted.actor.role).toBe("admin"); expect(dependencies.repository.promoteGoogleAdmin).toHaveBeenCalledWith("existing", expect.anything());
-    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(undefined); dependencies.repository.createAccount.mockResolvedValue("new-learner"); dependencies.selectAccount = { ...actor, id: "new-learner" };
-    const learner = await realSignInWithGoogle({ subject: "learner-sub", email: "learner@example.test", displayName: "Learner" }, ["admin@example.test"]);
-    expect(learner.actor.role).toBe("learner"); expect(dependencies.repository.createAccount).toHaveBeenLastCalledWith(expect.objectContaining({ role: "learner" }), undefined, expect.anything()); expect(dependencies.repository.auditOidcProvisioning).toHaveBeenCalledWith("new-learner", expect.anything());
+    const existing = await realSignInWithGoogle({ subject: "admin-sub", email: "admin@example.test", displayName: "Admin" }, ["admin@example.test"]);
+    expect(existing.actor.role).toBe("learner"); expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled();
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(undefined); dependencies.repository.createAccount.mockResolvedValue("new-admin"); dependencies.selectAccount = { ...actor, id: "new-admin", role: "admin" };
+    const created = await realSignInWithGoogle({ subject: "new-admin-sub", email: "new-admin@example.test", displayName: "New Admin" }, ["new-admin@example.test"]);
+    expect(created.actor.role).toBe("admin"); expect(dependencies.repository.createAccount).toHaveBeenLastCalledWith(expect.objectContaining({ role: "admin" }), undefined, expect.anything()); expect(dependencies.repository.auditOidcProvisioning).toHaveBeenCalledWith("new-admin", expect.anything());
   });
 
   it("links a verified Google identity to an active existing teacher without changing their role", async () => {
@@ -122,8 +122,8 @@ describe("identity I/O matrix without external services", () => {
     expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled(); expect(dependencies.repository.createSession).not.toHaveBeenCalled();
   });
 
-  it("does not complete Google sign-in when promotion loses a deactivation race", async () => {
-    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "active" }); dependencies.repository.promoteGoogleAdmin.mockRejectedValue(new Error("ACCOUNT_NOT_ACTIVE"));
+  it("does not complete Google sign-in when linking an existing account loses a deactivation race", async () => {
+    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "active" }); dependencies.repository.linkGoogleIdentity.mockRejectedValue(new Error("ACCOUNT_NOT_ACTIVE"));
     const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
     await expect(realSignInWithGoogle({ subject: "admin-race", email: "learner@example.test", displayName: "Learner" }, ["learner@example.test"])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
     expect(dependencies.repository.createSession).not.toHaveBeenCalled();

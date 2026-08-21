@@ -33,17 +33,28 @@ export async function deactivateCentreAccount(actor: Actor, input: { accountId: 
     }
   });
 }
+export async function changeCentreAccountRole(actor: Actor, input: { accountId: string; role: Role }) {
+  authorise(actor, ["admin"]);
+  return database.transaction(async (tx) => {
+    try { await repository.changeAccountRole(input.accountId, input.role, actor.id, tx); }
+    catch (error) {
+      if (error instanceof Error && error.message === "LAST_ACTIVE_ADMIN") throw new IdentityError("LAST_ACTIVE_ADMIN", "Another active admin must be available before this account's role can be changed.");
+      if (error instanceof Error && error.message === "ACCOUNT_NOT_FOUND") throw new IdentityError("ACCOUNT_NOT_FOUND", "This account could not be found.");
+      if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("ACCOUNT_NOT_ACTIVE", "This account is no longer active.");
+      throw error;
+    }
+  });
+}
 export async function getCentreAccounts(actor: Actor) { authorise(actor, ["admin"]); return repository.listCentreAccounts(); }
 export async function getCentreAccountDetail(actor: Actor, accountId: string) { authorise(actor, ["admin"]); return repository.getCentreAccountDetail(accountId); }
 export async function signInWithGoogle(identity: VerifiedGoogleIdentity, adminEmails: string[]) {
   return database.transaction(async (tx) => {
     const linked = await repository.getGoogleIdentity(identity.subject, tx);
-    if (linked) { const account = (await tx.select().from(accounts).where(eq(accounts.id, linked.accountId)).limit(1))[0]; if (!account || account.status !== "active" || canonicalEmail(account.email) !== canonicalEmail(identity.email)) throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); const role = adminEmails.includes(identity.email) ? "admin" : account.role; try { if (role === "admin" && account.role !== "admin") await repository.promoteGoogleAdmin(account.id, tx); return { actor: { ...repository.toActor(account), role }, token: await repository.createSession(account.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; } }
+    if (linked) { const account = (await tx.select().from(accounts).where(eq(accounts.id, linked.accountId)).limit(1))[0]; if (!account || account.status !== "active" || canonicalEmail(account.email) !== canonicalEmail(identity.email)) throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); try { return { actor: repository.toActor(account), token: await repository.createSession(account.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; } }
     const existing = await repository.getAccountByEmail(identity.email, tx);
     if (existing) {
       if (existing.status !== "active") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google.");
-      const role = adminEmails.includes(identity.email) ? "admin" : existing.role;
-      try { if (role === "admin") await repository.promoteGoogleAdmin(existing.id, tx); await repository.linkGoogleIdentity(identity.subject, existing.id, tx); return { actor: { ...repository.toActor(existing), role }, token: await repository.createSession(existing.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; }
+      try { await repository.linkGoogleIdentity(identity.subject, existing.id, tx); return { actor: repository.toActor(existing), token: await repository.createSession(existing.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; }
     }
     const id = await repository.createAccount({ email: identity.email, displayName: identity.displayName, role: adminEmails.includes(identity.email) ? "admin" : "learner" }, undefined, tx);
     await repository.linkGoogleIdentity(identity.subject, id, tx); await repository.auditOidcProvisioning(id, tx); const account = (await tx.select().from(accounts).where(eq(accounts.id, id)).limit(1))[0]!; return { actor: repository.toActor(account), token: await repository.createSession(id, tx) };

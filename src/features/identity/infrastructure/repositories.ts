@@ -66,13 +66,20 @@ export async function deactivateAccount(accountId: string, actorId: string, conf
   await db.update(sessions).set({ revokedAt: deactivatedAt }).where(and(eq(sessions.accountId, accountId), isNull(sessions.revokedAt)));
   await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "ACCOUNT_DEACTIVATED", targetId: accountId });
 }
+export async function changeAccountRole(accountId: string, role: Role, actorId: string, db: Database) {
+  // Lock every active admin before deciding so concurrent admin changes cannot remove them all.
+  const activeAdmins = await db.execute<{ id: string }>(sql`SELECT id FROM accounts WHERE role = 'admin' AND status = 'active' ORDER BY id FOR UPDATE`);
+  const lockedTargets = await db.execute<{ id: string; role: Role; status: "active" | "deactivated" }>(sql`SELECT id, role, status FROM accounts WHERE id = ${accountId} FOR UPDATE`);
+  const target = lockedTargets[0];
+  if (!target) throw new Error("ACCOUNT_NOT_FOUND");
+  if (target.status !== "active") throw new Error("ACCOUNT_NOT_ACTIVE");
+  if (target.role === "admin" && target.status === "active" && role !== "admin" && activeAdmins.length === 1 && activeAdmins[0]?.id === accountId) throw new Error("LAST_ACTIVE_ADMIN");
+  if (target.role === role) return;
+  await db.update(accounts).set({ role, updatedAt: new Date() }).where(eq(accounts.id, accountId));
+  await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "ACCOUNT_ROLE_CHANGED", targetId: accountId });
+}
 export async function getGoogleIdentity(subject: string, db: Database = database) { return (await db.select().from(oidcIdentities).where(and(eq(oidcIdentities.provider, "google"), eq(oidcIdentities.subject, subject))).limit(1))[0]; }
 export async function linkGoogleIdentity(subject: string, accountId: string, db: Database = database) { await db.insert(oidcIdentities).values({ provider: "google", subject, accountId }); await db.insert(auditEvents).values({ id: uuidv7(), action: "OIDC_IDENTITY_LINKED", targetId: accountId }); }
-export async function promoteGoogleAdmin(accountId: string, db: Database = database) {
-  const promoted = await db.update(accounts).set({ role: "admin", updatedAt: new Date() }).where(and(eq(accounts.id, accountId), eq(accounts.status, "active"))).returning({ id: accounts.id });
-  if (!promoted[0]) throw new Error("ACCOUNT_NOT_ACTIVE");
-  await db.insert(auditEvents).values({ id: uuidv7(), action: "ACCOUNT_PROMOTED_GOOGLE_ADMIN", targetId: accountId });
-}
 export async function auditOidcProvisioning(accountId: string, db: Database = database) { await db.insert(auditEvents).values({ id: uuidv7(), action: "OIDC_ACCOUNT_PROVISIONED", targetId: accountId }); }
 export async function recordEvidenceRead(actorId: string, learnerId: string | undefined, outcome: "SUCCESS" | "NO_DATA", db: Database = database) {
   await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "EVIDENCE_READ", targetId: learnerId, targetScope: learnerId ? "LEARNER_DETAIL" : "CENTRE_WIDE", outcome });
