@@ -93,6 +93,18 @@ function SharedFields({ targets, guidance }: Omit<Shared, "policies" | "media">)
         <input name="supportingTargetIds" />
       </label>
       <label>
+        Spelling evidence tags, comma separated (optional)
+        <input name="spelling" />
+      </label>
+      <label>
+        Colour evidence tags, comma separated (optional)
+        <input name="colours" />
+      </label>
+      <label>
+        Position evidence tags, comma separated (optional)
+        <input name="positions" />
+      </label>
+      <label>
         Task guidance
         <select name="guidanceId" required>
           <option value="">Choose guidance</option>

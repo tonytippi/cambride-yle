@@ -11,6 +11,7 @@ const throttleKey = (email: string, origin: string) => createHash("sha256").upda
 
 export async function getAccountByEmail(email: string, db: Database = database) { return (await db.select().from(accounts).where(eq(accounts.canonicalEmail, canonicalEmail(email))).limit(1))[0]; }
 export async function getAccountById(id: string, db: Database = database) { return (await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id)).limit(1))[0]; }
+export async function getActiveLearnerById(id: string, db: Database = database) { return (await db.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.role, "learner"), eq(accounts.status, "active"))).limit(1))[0]; }
 export async function getActorBySessionToken(token: string, db: Database = database): Promise<Actor | undefined> {
   const verifierHash = createHash("sha256").update(token).digest("hex");
   const rows = await db.select({ account: accounts }).from(sessions).innerJoin(accounts, eq(sessions.accountId, accounts.id)).where(and(eq(sessions.verifierHash, verifierHash), isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()), eq(accounts.status, "active"))).limit(1);

@@ -1,4 +1,4 @@
-import { check, foreignKey, index, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { check, foreignKey, index, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { practiceAttempts, practiceAttemptReviewItems } from "./practice";
 import { practiceSets } from "./content";
@@ -18,6 +18,7 @@ export const submittedEvidenceFacts = pgTable("submitted_evidence_facts", {
   languageTargetId: uuid("language_target_id").notNull(),
   languageTarget: text("language_target").notNull(),
   automaticOutcome: evidenceOutcome("automatic_outcome").notNull(),
+  dimensions: jsonb("dimensions").notNull().default({}),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -27,6 +28,7 @@ export const submittedEvidenceFacts = pgTable("submitted_evidence_facts", {
   foreignKey({ columns: [table.reviewItemId, table.attemptId], foreignColumns: [practiceAttemptReviewItems.id, practiceAttemptReviewItems.attemptId], name: "submitted_evidence_facts_review_attempt_fk" }),
   foreignKey({ columns: [table.practiceSetId], foreignColumns: [practiceSets.id], name: "submitted_evidence_facts_set_fk" }),
   foreignKey({ columns: [table.languageTargetId], foreignColumns: [curriculumTargets.id], name: "submitted_evidence_facts_target_fk" }),
-  index("submitted_evidence_facts_latest_idx").on(table.learnerId, table.practiceSetId, table.submittedAt),
+  index("submitted_evidence_facts_latest_idx").on(table.learnerId, table.practiceSetId, table.submittedAt, table.attemptId),
   index("submitted_evidence_facts_target_idx").on(table.paper, table.part, table.languageTargetId, table.submittedAt),
+  index("submitted_evidence_facts_filter_idx").on(table.learnerId, table.paper, table.part, table.practiceSetId, table.submittedAt),
 ]);

@@ -58,6 +58,7 @@ const contentFields = {
   guidanceId: uuid("guidance_id")
     .notNull()
     .references(() => curriculumGuidance.id),
+  evidenceDimensions: jsonb("evidence_dimensions").notNull().default({}),
   estimatedDurationSeconds: text("estimated_duration_seconds").notNull(),
   accessibilityMetadata: jsonb("accessibility_metadata").notNull(),
   provenance: jsonb("provenance").notNull(),

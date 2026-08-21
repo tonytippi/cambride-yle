@@ -29,8 +29,16 @@ describe("submitted evidence projection migration", () => {
     expect(repository).toContain("primaryTargetId?: unknown; supportingTargetIds?: unknown");
     expect(repository).toContain("value.primaryTargetId");
     expect(repository).toContain("value.supportingTargetIds");
-    expect(repository).toContain("curriculumTags: { ...(tags ?? {}), evidenceTargets }");
+    expect(repository).toContain("dimensions: snapshotDimensions(tags), evidenceTargets");
     expect(repository).toContain("tx.insert(submittedEvidenceFacts).values");
+  });
+
+  it("adds immutable submitted filter dimensions without deriving historical values", async () => {
+    const migration = await readFile("db/migrations/0022_teacher_evidence_filter_drilldown.sql", "utf8");
+    expect(migration).toContain('ADD COLUMN "dimensions" jsonb NOT NULL');
+    expect(migration).toContain("Historical rows deliberately remain empty");
+    expect(migration).toContain("SUBMITTED_EVIDENCE_FACT_DIMENSIONS_INVALID");
+    expect(migration).toContain("r.curriculum_tags -> 'dimensions'");
   });
 
   it("rejects forged fact dimensions and malformed EVIDENCE_READ audit rows in PostgreSQL", async () => {
@@ -38,6 +46,8 @@ describe("submitted evidence projection migration", () => {
     try {
       const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('submitted_evidence_facts', 'practice_attempt_review_items')`;
       if (tables.length !== 2) return;
+      const dimensions = await sql<{ column_name: string }[]>`SELECT column_name FROM information_schema.columns WHERE table_name = 'submitted_evidence_facts' AND column_name = 'dimensions'`;
+      if (!dimensions.length) return;
       await sql.begin(async (transaction) => {
         const teacherId = crypto.randomUUID();
         const learnerId = crypto.randomUUID();
@@ -55,12 +65,14 @@ describe("submitted evidence projection migration", () => {
         await transaction`ALTER TABLE practice_attempt_review_items DISABLE TRIGGER ALL`;
         await transaction`INSERT INTO practice_attempt_review_items (id, attempt_id, practice_set_item_id, position, outcome, evidence_label, approved_answer, approved_answer_label, presentation, answer_policy_version, curriculum_tags) VALUES (${reviewItemId}, ${attemptId}, ${crypto.randomUUID()}, 1, 'correct', 'secure', 'true'::jsonb, 'True', '{}'::jsonb, 'fixture', ${transaction.json({ evidenceTargets: [{ id: targetId, label: `animals-${suffix}` }] })})`;
         await transaction`ALTER TABLE practice_attempt_review_items ENABLE TRIGGER ALL`;
-        const insertFact = (id: string, overrides: { paper?: string; part?: string; targetId?: string; target?: string } = {}) => transaction`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, submitted_at) SELECT ${id}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, ${overrides.paper ?? "listening"}, ${overrides.part ?? "1"}, ${overrides.targetId ?? targetId}, ${overrides.target ?? `animals-${suffix}`}, 'correct', submitted_at FROM practice_attempts WHERE id = ${attemptId}`;
+        const insertFact = (id: string, overrides: { paper?: string; part?: string; targetId?: string; target?: string; dimensions?: Record<string, string[] | string> } = {}) => transaction`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, dimensions, submitted_at) SELECT ${id}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, ${overrides.paper ?? "listening"}, ${overrides.part ?? "1"}, ${overrides.targetId ?? targetId}, ${overrides.target ?? `animals-${suffix}`}, 'correct', ${transaction.json(overrides.dimensions ?? {})}, submitted_at FROM practice_attempts WHERE id = ${attemptId}`;
         await insertFact(crypto.randomUUID());
         await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, 'reading_writing', '1', ${targetId}, ${`animals-${suffix}`}, 'correct', ${submittedAt})`)).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_SCOPE_INVALID/);
         await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, 'listening', '2', ${targetId}, ${`animals-${suffix}`}, 'correct', ${submittedAt})`)).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_SCOPE_INVALID/);
         await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, 'listening', '1', ${otherTargetId}, 'food', 'correct', ${submittedAt})`)).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_SCOPE_INVALID/);
         await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewItemId}, ${learnerId}, ${setId}, 'listening', '1', ${targetId}, 'forged label', 'correct', ${submittedAt})`)).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_SCOPE_INVALID/);
+        await expect(insertFact(crypto.randomUUID(), { dimensions: { topic: ["Forged"] } })).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_SCOPE_INVALID/);
+        await expect(insertFact(crypto.randomUUID(), { dimensions: { topic: "Forged" } })).rejects.toThrow(/SUBMITTED_EVIDENCE_FACT_DIMENSIONS_INVALID/);
         const insertAudit = (id: string, actorId: string | null, targetId: string | null, scope: string) => transaction`INSERT INTO audit_events (id, actor_id, action, target_id, outcome, target_scope) VALUES (${id}, ${actorId}, 'EVIDENCE_READ', ${targetId}, 'SUCCESS', ${scope})`;
         await insertAudit(crypto.randomUUID(), teacherId, null, "CENTRE_WIDE");
         await insertAudit(crypto.randomUUID(), teacherId, learnerId, "LEARNER_DETAIL");

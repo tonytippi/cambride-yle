@@ -10,7 +10,8 @@ export async function GET(request: Request) {
   if (!actor) { logEvent({ requestId: id, feature: "evidence", action: "read", outcome: "failure", errorCode: "FORBIDDEN" }); return failure("FORBIDDEN", "You do not have access to that page.", 403, id); }
   try {
     const searchParams = new URL(request.url).searchParams;
-    const result = await getCentreEvidence(actor, searchParams.has("learner") ? { learnerId: searchParams.get("learner") } : {});
+    const input = Object.fromEntries([...searchParams].map(([key, value]) => [key === "learner" ? "learnerId" : key === "set" ? "practiceSetId" : key, value]));
+    const result = await getCentreEvidence(actor, input);
     if ("error" in result) return failure(result.error.code, result.error.message, 400, id);
     logEvent({ requestId: id, actorId: actor.id, feature: "evidence", action: "read", outcome: "success" });
     return success(result.data, 200, id);

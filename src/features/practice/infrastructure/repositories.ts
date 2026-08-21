@@ -12,12 +12,14 @@ import {
   practiceSetItemMedia,
   practiceSets,
   submittedEvidenceFacts,
+  accounts,
 } from "@/../db/schema";
 import { evaluateAnswer, normaliseAnswer } from "@/features/curriculum/domain/answer-policy";
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import { authoriseMedia, isMediaGatewayConfigured } from "./media-gateway";
 import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedEvidence, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
+import type { SubmittedEvidenceDetail, SubmittedEvidenceFilter, SubmittedEvidenceReader } from "../application/evidence-contract";
 
 type Database = typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
 
@@ -189,6 +191,11 @@ const answerLabel = (answer: string | boolean | number | undefined, engine: Lear
   if (typeof answer === "boolean") return answer ? "True" : "False";
   return engine === "audio_picture_choice" ? choices.find((choice) => choice === answer) ?? "Selected picture" : String(answer);
 };
+const snapshotDimensions = (tags: unknown) => {
+  const dimensions = (tags as { dimensions?: unknown } | null)?.dimensions;
+  if (!dimensions || typeof dimensions !== "object" || Array.isArray(dimensions)) return {};
+  return Object.fromEntries(Object.entries(dimensions).flatMap(([key, value]) => ["vocabulary", "grammar", "spelling", "names", "numbers", "colours", "positions", "topic"].includes(key) && Array.isArray(value) && value.every((entry) => typeof entry === "string") ? [[key, value]] : []));
+};
 export const finalisationResponse = (response: unknown, policy: StoredPolicy) => {
   if (policy.inputKind !== "number" || typeof response !== "string") return response;
   const normalised = normaliseAnswer(response, policy);
@@ -221,7 +228,7 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
       ];
     };
     const targetIds = [...new Set(items.flatMap((item) => targetIdsFor(item.tags)))];
-    const targets = targetIds.length ? await tx.select({ id: curriculumTargets.id, canonicalId: curriculumTargets.canonicalId }).from(curriculumTargets).where(inArray(curriculumTargets.id, targetIds)) : [];
+    const targets = targetIds.length ? await tx.select({ id: curriculumTargets.id, canonicalId: curriculumTargets.canonicalId, category: curriculumTargets.category }).from(curriculumTargets).where(inArray(curriculumTargets.id, targetIds)) : [];
     // A fact cannot be safely projected without every submitted target dimension.
     if (targets.length !== targetIds.length) return { error: "ITEM_INVALID" };
     const label = evidenceFor(scored.map((entry) => entry.outcome));
@@ -238,7 +245,7 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
         const target = targets.find((entry) => entry.id === targetId)!;
         return { id: target.id, label: target.canonicalId };
       });
-      await tx.insert(practiceAttemptReviewItems).values({ id: uuidv7(), attemptId: attempt.id, practiceSetItemId: item.id, position: item.position, response: response ?? null, responseLabel: answerLabel(response as string | boolean | number | undefined, item.engine as LearnerEngine, choices), outcome, evidenceLabel: label, approvedAnswer: policy.canonicalAnswer, approvedAnswerLabel: answerLabel(policy.canonicalAnswer, item.engine as LearnerEngine, choices)!, presentation: { engine: item.engine, prompt: item.prompt, options: choices }, explanation: explanationFrom(item.feedback), answerPolicyVersion: policy.policyId ?? policy.canonicalId ?? "published-snapshot", curriculumTags: { ...(tags ?? {}), evidenceTargets } });
+      await tx.insert(practiceAttemptReviewItems).values({ id: uuidv7(), attemptId: attempt.id, practiceSetItemId: item.id, position: item.position, response: response ?? null, responseLabel: answerLabel(response as string | boolean | number | undefined, item.engine as LearnerEngine, choices), outcome, evidenceLabel: label, approvedAnswer: policy.canonicalAnswer, approvedAnswerLabel: answerLabel(policy.canonicalAnswer, item.engine as LearnerEngine, choices)!, presentation: { engine: item.engine, prompt: item.prompt, options: choices }, explanation: explanationFrom(item.feedback), answerPolicyVersion: policy.policyId ?? policy.canonicalId ?? "published-snapshot", curriculumTags: { ...(tags ?? {}), dimensions: snapshotDimensions(tags), evidenceTargets } });
     }
     const reviewItems = await tx.select({ id: practiceAttemptReviewItems.id, practiceSetItemId: practiceAttemptReviewItems.practiceSetItemId, outcome: practiceAttemptReviewItems.outcome }).from(practiceAttemptReviewItems).where(eq(practiceAttemptReviewItems.attemptId, attempt.id));
     for (const reviewItem of reviewItems) {
@@ -246,7 +253,8 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
       const itemTargetIds = targetIdsFor(source.tags);
       for (const targetId of itemTargetIds) {
         const target = targets.find((entry) => entry.id === targetId)!;
-        await tx.insert(submittedEvidenceFacts).values({ id: uuidv7(), attemptId: attempt.id, reviewItemId: reviewItem.id, learnerId, practiceSetId: attempt.practiceSetId, paper: set.paper, part: set.part, languageTargetId: target.id, languageTarget: target.canonicalId, automaticOutcome: reviewItem.outcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", submittedAt });
+        const reviewTags = (await tx.select({ curriculumTags: practiceAttemptReviewItems.curriculumTags }).from(practiceAttemptReviewItems).where(eq(practiceAttemptReviewItems.id, reviewItem.id)).limit(1))[0]!.curriculumTags;
+        await tx.insert(submittedEvidenceFacts).values({ id: uuidv7(), attemptId: attempt.id, reviewItemId: reviewItem.id, learnerId, practiceSetId: attempt.practiceSetId, paper: set.paper, part: set.part, languageTargetId: target.id, languageTarget: target.canonicalId, automaticOutcome: reviewItem.outcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", submittedAt, dimensions: snapshotDimensions(reviewTags) });
       }
     }
     const tags = items.flatMap((item) => {
@@ -257,6 +265,24 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
     return { attemptId: updated.id, setId: updated.practiceSetId, submittedAt: updated.submittedAt!, revision: updated.revision };
   });
 }
+
+const filterEvidence = <T extends { learnerId: string; practiceSetId: string; paper: string; part: string; languageTarget: string; dimensions: Record<string, string[]> }>(rows: T[], filter: SubmittedEvidenceFilter = {}) => rows.filter((row) => Object.entries(filter).every(([key, value]) => {
+  if (!value) return true;
+  if (key === "learnerId" || key === "practiceSetId" || key === "paper" || key === "part") return row[key] === value;
+  if (key === "vocabulary" || key === "grammar") return row.languageTarget === value || row.dimensions[key]?.includes(value);
+  return row.dimensions[key]?.includes(value) ?? false;
+}));
+
+export const submittedEvidenceReader: SubmittedEvidenceReader = {
+  async listSubmittedEvidenceFacts() {
+    const rows = await database.select({ attemptId: submittedEvidenceFacts.attemptId, learnerId: submittedEvidenceFacts.learnerId, learnerName: accounts.displayName, practiceSetId: submittedEvidenceFacts.practiceSetId, paper: submittedEvidenceFacts.paper, part: submittedEvidenceFacts.part, languageTargetId: submittedEvidenceFacts.languageTargetId, languageTarget: submittedEvidenceFacts.languageTarget, automaticOutcome: submittedEvidenceFacts.automaticOutcome, submittedAt: submittedEvidenceFacts.submittedAt, dimensions: submittedEvidenceFacts.dimensions }).from(submittedEvidenceFacts).innerJoin(accounts, eq(accounts.id, submittedEvidenceFacts.learnerId));
+    return rows.map((row) => ({ ...row, paper: row.paper as "listening" | "reading_writing", automaticOutcome: row.automaticOutcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", dimensions: row.dimensions as Record<string, string[]> }));
+  },
+  async listSubmittedEvidenceDetails(filter) {
+    const rows = await database.select({ attemptId: submittedEvidenceFacts.attemptId, reviewItemId: submittedEvidenceFacts.reviewItemId, practiceSetItemId: practiceAttemptReviewItems.practiceSetItemId, learnerId: submittedEvidenceFacts.learnerId, learnerName: accounts.displayName, practiceSetId: submittedEvidenceFacts.practiceSetId, paper: submittedEvidenceFacts.paper, part: submittedEvidenceFacts.part, languageTargetId: submittedEvidenceFacts.languageTargetId, languageTarget: submittedEvidenceFacts.languageTarget, automaticOutcome: submittedEvidenceFacts.automaticOutcome, submittedAt: submittedEvidenceFacts.submittedAt, dimensions: submittedEvidenceFacts.dimensions, position: practiceAttemptReviewItems.position, response: practiceAttemptReviewItems.response, responseLabel: practiceAttemptReviewItems.responseLabel, timing: practiceAttempts.finalTiming, playback: practiceAttempts.playbackSnapshot }).from(submittedEvidenceFacts).innerJoin(practiceAttemptReviewItems, and(eq(practiceAttemptReviewItems.id, submittedEvidenceFacts.reviewItemId), eq(practiceAttemptReviewItems.attemptId, submittedEvidenceFacts.attemptId))).innerJoin(practiceAttempts, eq(practiceAttempts.id, submittedEvidenceFacts.attemptId)).innerJoin(accounts, eq(accounts.id, submittedEvidenceFacts.learnerId)).orderBy(desc(submittedEvidenceFacts.submittedAt), desc(submittedEvidenceFacts.attemptId), practiceAttemptReviewItems.position);
+    return filterEvidence(rows.map((row) => { const timing = row.timing as Partial<SubmittedEvidenceDetail["timing"]> | null; return { ...row, paper: row.paper as "listening" | "reading_writing", automaticOutcome: row.automaticOutcome as SubmittedEvidenceDetail["automaticOutcome"], effectiveOutcome: row.automaticOutcome as SubmittedEvidenceDetail["effectiveOutcome"], dimensions: row.dimensions as Record<string, string[]>, response: row.response as SubmittedEvidenceDetail["response"], timing: { startedAt: typeof timing?.startedAt === "string" ? timing.startedAt : "Not recorded", lastSavedAt: typeof timing?.lastSavedAt === "string" ? timing.lastSavedAt : "Not recorded", submittedAt: typeof timing?.submittedAt === "string" ? timing.submittedAt : row.submittedAt.toISOString() }, playback: Array.isArray(row.playback) ? row.playback.filter((event): event is SubmittedEvidenceDetail["playback"][number] => !!event && typeof event === "object" && typeof (event as { itemId?: unknown }).itemId === "string" && typeof (event as { mediaId?: unknown }).mediaId === "string" && typeof (event as { playedAt?: unknown }).playedAt === "string") : [] }; }), filter) as SubmittedEvidenceDetail[];
+  },
+};
 
 export async function getSubmittedPracticeReview(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<SubmittedPracticeReview | { error: "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" }> {
   const attempt = (await db.select({ id: practiceAttempts.id, setId: practiceAttempts.practiceSetId, revision: practiceAttempts.revision, submittedAt: practiceAttempts.submittedAt, status: practiceAttempts.status, title: practiceAttempts.submittedTitle, expectedReviewItemCount: practiceAttempts.expectedReviewItemCount, reviewSnapshotItems: practiceAttempts.reviewSnapshotItems, presentation: practiceAttempts.submittedPresentation, timing: practiceAttempts.finalTiming, playback: practiceAttempts.playbackSnapshot }).from(practiceAttempts).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];

@@ -23,6 +23,11 @@ import { createHash } from "node:crypto";
 import type { MediaDraftInput, QuestionDraftInput } from "../domain/contracts";
 type Database =
   typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
+const evidenceDimensions = (value: unknown) => {
+  const dimensions = value as { spelling?: unknown; colours?: unknown; positions?: unknown } | undefined;
+  const values = (key: "spelling" | "colours" | "positions") => Array.isArray(dimensions?.[key]) ? dimensions[key].filter((item): item is string => typeof item === "string") : [];
+  return { spelling: values("spelling"), colours: values("colours"), positions: values("positions") };
+};
 const baseValues = (
   input: QuestionDraftInput | MediaDraftInput,
   actorId: string,
@@ -477,6 +482,13 @@ export async function createPublishedPracticeSet(
     ],
     createdBy: input.actorId,
   });
+  const supportingTargetIdsFor = (question: (typeof questions)[number]) => Array.isArray(question.supportingTargetIds) ? question.supportingTargetIds.filter((id): id is string => typeof id === "string") : [];
+  const guidanceIds = [...new Set(questions.map((question) => question.guidanceId))];
+  const targetIds = [...new Set(questions.flatMap((question) => [question.primaryTargetId, ...supportingTargetIdsFor(question)]))];
+  const [guidance, targets] = await Promise.all([
+    db.select({ id: curriculumGuidance.id, topic: curriculumGuidance.topic, approvedNames: curriculumGuidance.approvedNames, approvedNumbers: curriculumGuidance.approvedNumbers }).from(curriculumGuidance).where(inArray(curriculumGuidance.id, guidanceIds)),
+    db.select({ id: curriculumTargets.id, canonicalId: curriculumTargets.canonicalId, category: curriculumTargets.category }).from(curriculumTargets).where(inArray(curriculumTargets.id, targetIds)),
+  ]);
   for (const [index, question] of questions.entries()) {
     const itemId = uuidv7();
     const policy = await db
@@ -503,6 +515,14 @@ export async function createPublishedPracticeSet(
         supportingTargetIds: question.supportingTargetIds,
         topicIds: question.topicIds,
         guidanceId: question.guidanceId,
+        dimensions: {
+          vocabulary: [question.primaryTargetId, ...supportingTargetIdsFor(question)].flatMap((id) => targets.find((target) => target.id === id)?.category === "vocabulary" ? [targets.find((target) => target.id === id)!.canonicalId] : []),
+          grammar: [question.primaryTargetId, ...supportingTargetIdsFor(question)].flatMap((id) => targets.find((target) => target.id === id)?.category === "grammar" ? [targets.find((target) => target.id === id)!.canonicalId] : []),
+          names: Array.isArray(guidance.find((entry) => entry.id === question.guidanceId)?.approvedNames) ? (guidance.find((entry) => entry.id === question.guidanceId)!.approvedNames as unknown[]).filter((value): value is string => typeof value === "string") : [],
+          numbers: Array.isArray(guidance.find((entry) => entry.id === question.guidanceId)?.approvedNumbers) ? (guidance.find((entry) => entry.id === question.guidanceId)!.approvedNumbers as unknown[]).filter((value): value is number => typeof value === "number").map(String) : [],
+          ...evidenceDimensions(question.evidenceDimensions),
+          topic: [guidance.find((entry) => entry.id === question.guidanceId)?.topic ?? ""].filter(Boolean),
+        },
       },
       accessibilityMetadata: question.accessibilityMetadata,
       provenance: question.provenance,

@@ -31,6 +31,11 @@ const previewUrl = z.string().refine((value) => {
 const base = z.object({
   paper: z.enum(["listening", "reading_writing"]), part: z.number().int().min(1).max(5), engine: z.enum(engines),
   primaryTargetId: id, supportingTargetIds: z.array(id), topicIds: z.array(id), guidanceId: id,
+  evidenceDimensions: z.object({
+    spelling: z.array(plainText(120)).max(20).default([]),
+    colours: z.array(plainText(120)).max(20).default([]),
+    positions: z.array(plainText(120)).max(20).default([]),
+  }).strict().optional(),
   estimatedDurationSeconds: z.number().int().positive(), accessibilityMetadata: metadata, provenance,
 });
 export const questionDraftSchema = base.extend({ answerPolicyVersionId: id, prompt: plainText(2000), options: z.array(plainTextOption).min(1).max(10), postSubmitHint: postSubmitHint.optional(), mediaIds: z.array(id).max(20).superRefine((ids, context) => { if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "MEDIA_IDS_DUPLICATE" }); }).optional() }).strict();
