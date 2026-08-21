@@ -2,7 +2,7 @@
 title: 'Story 4.2: Filter And Drill Down Into Learner Evidence'
 type: 'feature'
 created: '2026-08-21'
-status: 'in-review'
+status: 'done'
 baseline_revision: '597338d6731c4d0ee9b30f4b13825540e1f17c4e'
 baseline_commit: '597338d6731c4d0ee9b30f4b13825540e1f17c4e'
 review_loop_iteration: 0

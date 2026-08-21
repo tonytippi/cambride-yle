@@ -41,6 +41,11 @@ describe("submitted evidence projection migration", () => {
     expect(migration).toContain("r.curriculum_tags -> 'dimensions'");
   });
 
+  it("returns each submitted review item once when it has multiple evidence targets", async () => {
+    const repository = await readFile("src/features/practice/infrastructure/repositories.ts", "utf8");
+    expect(repository).toContain("new Map(details.map((detail) => [detail.reviewItemId, detail]))");
+  });
+
   it("rejects forged fact dimensions and malformed EVIDENCE_READ audit rows in PostgreSQL", async () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
     try {
