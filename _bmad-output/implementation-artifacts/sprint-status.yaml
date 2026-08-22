@@ -67,7 +67,7 @@ development_status:
 
   epic-5: in-progress
   5-1-set-up-a-supervised-first-practice-session: done
-  5-2-review-first-practice-evidence-and-deactivate-access: backlog
+  5-2-review-first-practice-evidence-and-deactivate-access: done
   epic-5-retrospective: optional
 action_items:
   - id: "epic-4-retro-item-1-refactor-resolution-rebuild-to-preserve"
