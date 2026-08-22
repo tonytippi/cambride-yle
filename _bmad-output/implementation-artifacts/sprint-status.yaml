@@ -75,11 +75,11 @@ action_items:
     action: "Refactor resolution rebuild to preserve immutable attempt evidence and
       add a PostgreSQL-backed repository transaction test."
     owner: "Development"
-    status: open
+    status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-4-retro-08-21-2026.md"
   - id: "epic-4-retro-item-2-add-academic-lead-admin-resolution-and-s"
     epic: 4
     action: "Add academic-lead/admin resolution and stale-conflict browser E2E coverage."
     owner: "Development"
-    status: open
+    status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-4-retro-08-21-2026.md"

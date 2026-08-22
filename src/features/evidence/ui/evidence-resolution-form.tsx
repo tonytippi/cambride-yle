@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function EvidenceResolutionForm({ reviewItemId, revision }: { reviewItemId: string; revision: number }) {
+export function EvidenceResolutionForm({ reviewItemId, revision, outcome, correction }: { reviewItemId: string; revision: number; outcome: "correct" | "incorrect" | "unanswered"; correction: boolean }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -27,10 +27,10 @@ export function EvidenceResolutionForm({ reviewItemId, revision }: { reviewItemI
       setPending(false);
     }
   }
-  return <form className="evidence-resolution" action={resolve} aria-label="Resolve uncertain outcome">
-    <label>Effective outcome<select name="outcome" defaultValue="correct"><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unanswered">Unanswered</option></select></label>
+  return <form className="evidence-resolution" action={resolve} aria-label={correction ? "Correct resolved outcome" : "Resolve uncertain outcome"}>
+    <label>Effective outcome<select name="outcome" defaultValue={outcome}><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unanswered">Unanswered</option></select></label>
     <label>Reason<textarea name="reason" required maxLength={500} /></label>
-    <button type="submit" disabled={pending}>{pending ? "Saving..." : "Save resolution"}</button>
+    <button type="submit" disabled={pending}>{pending ? "Saving..." : correction ? "Save correction" : "Save resolution"}</button>
     {message && <p role="status">{message}</p>}
   </form>;
 }

@@ -54,7 +54,16 @@ export async function listRecentSubmittedEvidence(learnerId: string, since: Date
     .from(practiceAttemptEvidence)
     .innerJoin(practiceAttempts, and(eq(practiceAttempts.id, practiceAttemptEvidence.attemptId), eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.status, "submitted"), gte(practiceAttempts.submittedAt, since)))
     .orderBy(desc(practiceAttempts.submittedAt), desc(practiceAttempts.id));
-  return rows.filter((row): row is SubmittedEvidence => row.submittedAt !== null);
+  const attemptIds = [...new Set(rows.map((row) => row.attemptId))];
+  if (!attemptIds.length) return [];
+  const currentResolution = db.select({ reviewItemId: teacherEvidenceResolutions.reviewItemId, effectiveOutcome: teacherEvidenceResolutions.effectiveOutcome }).from(teacherEvidenceResolutions).where(sql`NOT EXISTS (SELECT 1 FROM teacher_evidence_resolutions newer WHERE newer.review_item_id = ${teacherEvidenceResolutions.reviewItemId} AND newer.revision > ${teacherEvidenceResolutions.revision})`).as("current_resolution");
+  const outcomes = await db.select({ attemptId: practiceAttemptReviewItems.attemptId, automaticOutcome: practiceAttemptReviewItems.outcome, effectiveOutcome: currentResolution.effectiveOutcome }).from(practiceAttemptReviewItems).leftJoin(currentResolution, eq(currentResolution.reviewItemId, practiceAttemptReviewItems.id)).where(inArray(practiceAttemptReviewItems.attemptId, attemptIds));
+  const labelByAttempt = new Map<string, "secure" | "building" | "needs_practice" | "not_assessed_yet">();
+  for (const attemptId of attemptIds) {
+    const attemptOutcomes = outcomes.filter((outcome) => outcome.attemptId === attemptId);
+    if (attemptOutcomes.length) labelByAttempt.set(attemptId, evidenceFor(attemptOutcomes.map((outcome) => outcome.effectiveOutcome ?? outcome.automaticOutcome)));
+  }
+  return rows.flatMap((row): SubmittedEvidence[] => row.submittedAt ? [{ ...row, submittedAt: row.submittedAt, label: labelByAttempt.get(row.attemptId) ?? row.label }] : []);
 }
 
 export async function recordRecommendation(learnerId: string, version: string, displayedSetIds: string[], db: Database = database) {
@@ -299,10 +308,6 @@ export async function appendTeacherEvidenceResolution(input: { reviewItemId: str
     const revision = current?.revision ?? 0;
     if (revision !== input.expectedRevision) return { error: "TEACHER_RESOLUTION_CONFLICT" as const };
     await tx.insert(teacherEvidenceResolutions).values({ id: uuidv7(), reviewItemId: item.id, revision: revision + 1, effectiveOutcome: input.outcome, reason: input.reason, resolverId: input.resolverId });
-    // This projection is derived from immutable review facts and may be rebuilt without changing them.
-    const outcomes = await tx.execute<{ outcome: string }>(sql`SELECT COALESCE((SELECT effective_outcome::text FROM teacher_evidence_resolutions resolution WHERE resolution.review_item_id = review.id ORDER BY revision DESC LIMIT 1), review.outcome) AS outcome FROM practice_attempt_review_items review WHERE review.attempt_id = ${item.attemptId}`);
-    const label = evidenceFor(outcomes.map((entry) => entry.outcome));
-    await tx.update(practiceAttemptEvidence).set({ label }).where(eq(practiceAttemptEvidence.attemptId, item.attemptId));
     await tx.insert(auditEvents).values({ id: uuidv7(), actorId: input.resolverId, action: "EVIDENCE_RESOLUTION", targetId: item.id, targetScope: "REVIEW_ITEM", outcome: "SUCCESS" });
     return { revision: revision + 1, effectiveOutcome: input.outcome };
   });
