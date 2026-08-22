@@ -12,15 +12,18 @@ const fixture = {
   academicLeadId: crypto.randomUUID(),
   adminId: crypto.randomUUID(),
   learnerId: crypto.randomUUID(),
+  emptyLearnerId: crypto.randomUUID(),
   targetId: crypto.randomUUID(),
   setId: crypto.randomUUID(),
   attemptId: crypto.randomUUID(),
   reviewItemId: crypto.randomUUID(),
   learnerName: `Alex Learner ${crypto.randomUUID()}`,
+  emptyLearnerName: `Sam Learner ${crypto.randomUUID()}`,
   email: `teacher-evidence-${crypto.randomUUID()}@example.test`,
   sessionToken: crypto.randomUUID(),
   academicLeadSessionToken: crypto.randomUUID(),
   adminSessionToken: crypto.randomUUID(),
+  learnerSessionToken: crypto.randomUUID(),
 };
 
 test.beforeAll(async () => {
@@ -38,9 +41,10 @@ test.beforeAll(async () => {
     const itemId = crypto.randomUUID();
     const submittedAt = new Date();
     await sql.begin(async (transaction) => {
-      await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${fixture.teacherId}, ${fixture.email}, ${fixture.email}, 'Evidence Teacher', 'teacher'), (${fixture.academicLeadId}, ${`lead-${fixture.academicLeadId}@example.test`}, ${`lead-${fixture.academicLeadId}@example.test`}, 'Evidence Lead', 'academic_lead'), (${fixture.adminId}, ${`admin-${fixture.adminId}@example.test`}, ${`admin-${fixture.adminId}@example.test`}, 'Evidence Admin', 'admin'), (${fixture.learnerId}, ${`learner-${fixture.learnerId}@example.test`}, ${`learner-${fixture.learnerId}@example.test`}, ${fixture.learnerName}, 'learner')`;
+      await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${fixture.teacherId}, ${fixture.email}, ${fixture.email}, 'Evidence Teacher', 'teacher'), (${fixture.academicLeadId}, ${`lead-${fixture.academicLeadId}@example.test`}, ${`lead-${fixture.academicLeadId}@example.test`}, 'Evidence Lead', 'academic_lead'), (${fixture.adminId}, ${`admin-${fixture.adminId}@example.test`}, ${`admin-${fixture.adminId}@example.test`}, 'Evidence Admin', 'admin'), (${fixture.learnerId}, ${`learner-${fixture.learnerId}@example.test`}, ${`learner-${fixture.learnerId}@example.test`}, ${fixture.learnerName}, 'learner'), (${fixture.emptyLearnerId}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${fixture.emptyLearnerName}, 'learner')`;
       await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.teacherId}, ${createHash("sha256").update(fixture.sessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
       await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.academicLeadId}, ${createHash("sha256").update(fixture.academicLeadSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)}), (${crypto.randomUUID()}, ${fixture.adminId}, ${createHash("sha256").update(fixture.adminSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
+      await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.learnerId}, ${createHash("sha256").update(fixture.learnerSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
       await transaction`INSERT INTO curriculum_targets (id, canonical_id, category, guidance, created_by) VALUES (${fixture.targetId}, ${`animals-${fixture.targetId}`}, 'vocabulary', 'Animal vocabulary', ${fixture.teacherId})`;
       await transaction`INSERT INTO curriculum_guidance (id, paper, part, engine, topic, task_format, max_words, max_options, approved_names, approved_numbers) VALUES (${guidanceId}, 'listening', 1, 'picture_true_false', ${`Animals ${guidanceId}`}, 'Picture true false', 10, 2, '[]'::jsonb, '[]'::jsonb)`;
       await transaction`INSERT INTO answer_policies (id, canonical_id, target_id, guidance_id, paper, part, engine) VALUES (${policyId}, ${`animals-policy-${policyId}`}, ${fixture.targetId}, ${guidanceId}, 'listening', 1, 'picture_true_false')`;
@@ -108,5 +112,54 @@ test("academic leads and admins resolve and retry stale uncertain outcomes", asy
   } finally {
     await leadContext.close();
     await adminContext.close();
+  }
+});
+
+test("an admin reviews learner evidence before named deactivation retains submitted records and revokes access", async ({ context, page }) => {
+  await context.addCookies([{ name: "cambridgeyle_session", value: fixture.adminSessionToken, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+  await page.goto(`/admin/accounts/${fixture.learnerId}`);
+  await page.getByRole("link", { name: "Review practice evidence" }).click();
+  await expect(page).toHaveURL(new RegExp(`/teacher\\?learner=${fixture.learnerId}$`));
+  await expect(page.getByRole("heading", { name: "Learner evidence detail" })).toBeVisible();
+
+  await page.goto(`/admin/accounts/${fixture.learnerId}`);
+  await page.getByRole("button", { name: "Deactivate account" }).click();
+  await page.getByLabel(`Type learner-${fixture.learnerId}@example.test to confirm`).fill(`learner-${fixture.learnerId}@example.test`);
+  await page.locator("dialog").getByRole("button", { name: "Deactivate account", exact: true }).click();
+  await expect(page.locator("dialog")).not.toBeVisible();
+
+  const sql = postgres(databaseUrl, { max: 1, prepare: false });
+  try {
+    const [account] = await sql<{ status: string }[]>`SELECT status FROM accounts WHERE id = ${fixture.learnerId}`;
+    const [session] = await sql<{ revoked_at: Date | null }[]>`SELECT revoked_at FROM sessions WHERE verifier_hash = ${createHash("sha256").update(fixture.learnerSessionToken).digest("hex")}`;
+    const [attempt] = await sql<{ count: string }[]>`SELECT count(*) FROM practice_attempts WHERE learner_id = ${fixture.learnerId} AND status = 'submitted'`;
+    const [evidence] = await sql<{ count: string }[]>`SELECT count(*) FROM submitted_evidence_facts WHERE learner_id = ${fixture.learnerId}`;
+    const [audit] = await sql<{ action: string; target_id: string; target_scope: string | null; outcome: string | null }[]>`SELECT action, target_id, target_scope, outcome FROM audit_events WHERE action = 'EVIDENCE_READ' AND actor_id = ${fixture.adminId} AND target_id = ${fixture.learnerId} ORDER BY created_at DESC LIMIT 1`;
+    expect(account?.status).toBe("deactivated");
+    expect(session?.revoked_at).not.toBeNull();
+    expect(attempt?.count).toBe("1");
+    expect(evidence?.count).toBe("1");
+    expect(audit).toEqual({ action: "EVIDENCE_READ", target_id: fixture.learnerId, target_scope: "LEARNER_DETAIL", outcome: "SUCCESS" });
+  } finally {
+    await sql.end();
+  }
+});
+
+test("an admin reviewing an active learner without submissions sees neutral empty evidence and a safe NO_DATA audit", async ({ context, page }) => {
+  await context.addCookies([{ name: "cambridgeyle_session", value: fixture.adminSessionToken, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+  await page.goto(`/admin/accounts/${fixture.emptyLearnerId}`);
+  await page.getByRole("link", { name: "Review practice evidence" }).click();
+  await expect(page).toHaveURL(new RegExp(`/teacher\\?learner=${fixture.emptyLearnerId}$`));
+  await expect(page.getByRole("heading", { name: "Learner evidence detail" })).toBeVisible();
+  await expect(page.getByText("State: not assessed yet")).toBeVisible();
+  await expect(page.getByText("No completed practice yet for this selection.")).toBeVisible();
+  await expect(page.getByText(/level/i)).toHaveCount(0);
+
+  const sql = postgres(databaseUrl, { max: 1, prepare: false });
+  try {
+    const [audit] = await sql<{ action: string; target_id: string; target_scope: string | null; outcome: string | null }[]>`SELECT action, target_id, target_scope, outcome FROM audit_events WHERE action = 'EVIDENCE_READ' AND actor_id = ${fixture.adminId} AND target_id = ${fixture.emptyLearnerId} ORDER BY created_at DESC LIMIT 1`;
+    expect(audit).toEqual({ action: "EVIDENCE_READ", target_id: fixture.emptyLearnerId, target_scope: "LEARNER_DETAIL", outcome: "NO_DATA" });
+  } finally {
+    await sql.end();
   }
 });
