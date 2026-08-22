@@ -130,6 +130,10 @@ function SharedFields({ targets, guidance }: Omit<Shared, "policies" | "media">)
         <input name="altText" required />
       </label>
       <label>
+        Picture-choice label (optional unless used for audio picture choice)
+        <input name="choiceLabel" />
+      </label>
+      <label>
         Source reference
         <input name="source" required />
       </label>

@@ -6,7 +6,7 @@ import postgres from "postgres";
 
 const databaseUrl = process.env.DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:5432/cambridgeyle_e2e";
 const migrations = [
-  "0000_initial_baseline.sql", "0001_identity.sql", "0002_canonical_account_email.sql", "0003_curriculum.sql", "0004_curriculum_policy_hardening.sql", "0005_curriculum_controlled_policy.sql", "0006_curriculum_target_approval.sql", "0007_answer_policy_guidance_reference.sql", "0008_content_drafts.sql", "0009_content_review_workflow.sql", "0010_content_review_trigger_fix.sql", "0011_content_review_integrity.sql", "0012_content_rejection_approval_guard.sql", "0013_content_approval_evidence_guard.sql", "0014_publish_immutable_practice_sets.sql", "0015_publish_immutable_practice_set_schema.sql", "0016_question_version_media.sql", "0017_learner_practice_selection.sql", "0018_practice_attempt_snapshot_metadata.sql", "0019_practice_attempt_responses_and_playback.sql", "0020_practice_attempt_submission_review.sql", "0021_teacher_evidence_projection.sql", "0022_teacher_evidence_filter_drilldown.sql", "0023_content_evidence_dimensions.sql", "0024_teacher_evidence_resolution.sql", "0025_practice_set_composition_trigger_fix.sql",
+  "0000_initial_baseline.sql", "0001_identity.sql", "0002_canonical_account_email.sql", "0003_curriculum.sql", "0004_curriculum_policy_hardening.sql", "0005_curriculum_controlled_policy.sql", "0006_curriculum_target_approval.sql", "0007_answer_policy_guidance_reference.sql", "0008_content_drafts.sql", "0009_content_review_workflow.sql", "0010_content_review_trigger_fix.sql", "0011_content_review_integrity.sql", "0012_content_rejection_approval_guard.sql", "0013_content_approval_evidence_guard.sql", "0014_publish_immutable_practice_sets.sql", "0015_publish_immutable_practice_set_schema.sql", "0016_question_version_media.sql", "0017_learner_practice_selection.sql", "0018_practice_attempt_snapshot_metadata.sql", "0019_practice_attempt_responses_and_playback.sql", "0020_practice_attempt_submission_review.sql", "0021_teacher_evidence_projection.sql", "0022_teacher_evidence_filter_drilldown.sql", "0023_content_evidence_dimensions.sql", "0024_teacher_evidence_resolution.sql", "0025_practice_set_composition_trigger_fix.sql", "0026_content_history_trigger_fix.sql",
 ];
 const fixture = {
   teacherId: crypto.randomUUID(),
@@ -14,8 +14,10 @@ const fixture = {
   adminId: crypto.randomUUID(),
   learnerId: crypto.randomUUID(),
   emptyLearnerId: crypto.randomUUID(),
+  clozeLearnerId: crypto.randomUUID(),
   targetId: crypto.randomUUID(),
   setId: crypto.randomUUID(),
+  clozeSetId: crypto.randomUUID(),
   mediaId: crypto.randomUUID(),
   mediaVersionId: crypto.randomUUID(),
   attemptId: crypto.randomUUID(),
@@ -27,6 +29,7 @@ const fixture = {
   academicLeadSessionToken: crypto.randomUUID(),
   adminSessionToken: crypto.randomUUID(),
   learnerSessionToken: crypto.randomUUID(),
+  clozeLearnerSessionToken: crypto.randomUUID(),
 };
 
 test.beforeAll(async () => {
@@ -42,12 +45,14 @@ test.beforeAll(async () => {
     const policyVersionId = crypto.randomUUID();
     const questionId = crypto.randomUUID();
     const itemId = crypto.randomUUID();
+    const clozeItemId = crypto.randomUUID();
     const submittedAt = new Date();
     await sql.begin(async (transaction) => {
-      await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${fixture.teacherId}, ${fixture.email}, ${fixture.email}, 'Evidence Teacher', 'teacher'), (${fixture.academicLeadId}, ${`lead-${fixture.academicLeadId}@example.test`}, ${`lead-${fixture.academicLeadId}@example.test`}, 'Evidence Lead', 'academic_lead'), (${fixture.adminId}, ${`admin-${fixture.adminId}@example.test`}, ${`admin-${fixture.adminId}@example.test`}, 'Evidence Admin', 'admin'), (${fixture.learnerId}, ${`learner-${fixture.learnerId}@example.test`}, ${`learner-${fixture.learnerId}@example.test`}, ${fixture.learnerName}, 'learner'), (${fixture.emptyLearnerId}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${fixture.emptyLearnerName}, 'learner')`;
+      await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${fixture.teacherId}, ${fixture.email}, ${fixture.email}, 'Evidence Teacher', 'teacher'), (${fixture.academicLeadId}, ${`lead-${fixture.academicLeadId}@example.test`}, ${`lead-${fixture.academicLeadId}@example.test`}, 'Evidence Lead', 'academic_lead'), (${fixture.adminId}, ${`admin-${fixture.adminId}@example.test`}, ${`admin-${fixture.adminId}@example.test`}, 'Evidence Admin', 'admin'), (${fixture.learnerId}, ${`learner-${fixture.learnerId}@example.test`}, ${`learner-${fixture.learnerId}@example.test`}, ${fixture.learnerName}, 'learner'), (${fixture.emptyLearnerId}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${`empty-${fixture.emptyLearnerId}@example.test`}, ${fixture.emptyLearnerName}, 'learner'), (${fixture.clozeLearnerId}, ${`cloze-${fixture.clozeLearnerId}@example.test`}, ${`cloze-${fixture.clozeLearnerId}@example.test`}, 'Cloze Learner', 'learner')`;
       await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.teacherId}, ${createHash("sha256").update(fixture.sessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
       await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.academicLeadId}, ${createHash("sha256").update(fixture.academicLeadSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)}), (${crypto.randomUUID()}, ${fixture.adminId}, ${createHash("sha256").update(fixture.adminSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
       await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.learnerId}, ${createHash("sha256").update(fixture.learnerSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
+      await transaction`INSERT INTO sessions (id, account_id, verifier_hash, expires_at) VALUES (${crypto.randomUUID()}, ${fixture.clozeLearnerId}, ${createHash("sha256").update(fixture.clozeLearnerSessionToken).digest("hex")}, ${new Date(Date.now() + 60 * 60 * 1000)})`;
       await transaction`INSERT INTO curriculum_targets (id, canonical_id, category, guidance, created_by) VALUES (${fixture.targetId}, ${`animals-${fixture.targetId}`}, 'vocabulary', 'Animal vocabulary', ${fixture.teacherId})`;
       await transaction`INSERT INTO curriculum_guidance (id, paper, part, engine, topic, task_format, max_words, max_options, approved_names, approved_numbers) VALUES (${guidanceId}, 'listening', 1, 'picture_true_false', ${`Animals ${guidanceId}`}, 'Picture true false', 10, 2, '[]'::jsonb, '[]'::jsonb)`;
       await transaction`INSERT INTO answer_policies (id, canonical_id, target_id, guidance_id, paper, part, engine) VALUES (${policyId}, ${`animals-policy-${policyId}`}, ${fixture.targetId}, ${guidanceId}, 'listening', 1, 'picture_true_false')`;
@@ -55,7 +60,9 @@ test.beforeAll(async () => {
       await transaction`INSERT INTO question_drafts (id, status, origin, paper, part, engine, primary_target_id, supporting_target_ids, topic_ids, guidance_id, estimated_duration_seconds, accessibility_metadata, provenance, created_by, answer_policy_version_id, prompt, options) VALUES (${questionId}, 'published', 'manual', 'listening', '1', 'picture_true_false', ${fixture.targetId}, '[]'::jsonb, ${JSON.stringify([fixture.targetId])}::jsonb, ${guidanceId}, '60', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb, ${fixture.teacherId}, ${policyVersionId}, 'A cat', '["true","false"]'::jsonb)`;
       await transaction`INSERT INTO media_drafts (id, status, origin, paper, part, engine, primary_target_id, supporting_target_ids, topic_ids, guidance_id, estimated_duration_seconds, accessibility_metadata, provenance, created_by, media_type, description) VALUES (${fixture.mediaVersionId}, 'published', 'manual', 'listening', '1', 'picture_true_false', ${fixture.targetId}, '[]'::jsonb, ${JSON.stringify([fixture.targetId])}::jsonb, ${guidanceId}, '60', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb, ${fixture.teacherId}, 'image', 'Owned E2E image')`;
       await transaction`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${fixture.setId}, 'Animal listening', 'listening', '1', 300, ${JSON.stringify([fixture.targetId])}::jsonb, ${fixture.teacherId})`;
+      await transaction`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${fixture.clozeSetId}, 'Word bank practice', 'listening', '1', 300, ${JSON.stringify([fixture.targetId])}::jsonb, ${fixture.teacherId})`;
       await transaction`INSERT INTO practice_set_items (id, practice_set_id, position, question_version_id, engine, rendered_prompt, rendered_options, answer_policy, feedback, tags, accessibility_metadata, provenance) VALUES (${itemId}, ${fixture.setId}, 1, ${questionId}, 'picture_true_false', 'A cat', '["true","false"]'::jsonb, '{}'::jsonb, '{}'::jsonb, ${transaction.json({ primaryTargetId: fixture.targetId, guidanceId })}, '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb)`;
+      await transaction`INSERT INTO practice_set_items (id, practice_set_id, position, question_version_id, engine, rendered_prompt, rendered_options, answer_policy, feedback, tags, accessibility_metadata, provenance) VALUES (${clozeItemId}, ${fixture.clozeSetId}, 1, ${questionId}, 'word_bank_cloze', 'Choose cat.', '["cat","dog"]'::jsonb, ${transaction.json({ canonicalAnswer: "cat", acceptedAnswers: [], inputKind: "word", normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId })}, '{}'::jsonb, ${transaction.json({ primaryTargetId: fixture.targetId, guidanceId })}, '{"altText":"Word bank"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb)`;
       await transaction`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES (${fixture.mediaId}, ${itemId}, ${fixture.mediaVersionId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat"}'::jsonb, '{"source":"Original","rightsReference":"Owned"}'::jsonb)`;
       await transaction`INSERT INTO practice_attempts (id, learner_id, practice_set_id, practice_set_version_id, status, submitted_at, last_saved_at, created_at, finalisation_key, submitted_title, submitted_presentation, expected_review_item_count, review_snapshot_items, final_timing, playback_snapshot) VALUES (${fixture.attemptId}, ${fixture.learnerId}, ${fixture.setId}, ${fixture.setId}, 'submitted', ${submittedAt}, ${submittedAt}, ${submittedAt}, ${crypto.randomUUID()}, 'Animal listening', '{"paper":"listening","part":"1"}'::jsonb, 1, ${JSON.stringify([{ id: itemId, position: 1 }])}::jsonb, ${JSON.stringify({ startedAt: submittedAt.toISOString(), lastSavedAt: submittedAt.toISOString(), submittedAt: submittedAt.toISOString() })}::jsonb, ${JSON.stringify([{ itemId, mediaId: "audio-1", playedAt: submittedAt.toISOString() }])}::jsonb)`;
       await transaction`INSERT INTO practice_attempt_review_items (id, attempt_id, practice_set_item_id, position, outcome, evidence_label, approved_answer, approved_answer_label, presentation, answer_policy_version, curriculum_tags) VALUES (${fixture.reviewItemId}, ${fixture.attemptId}, ${itemId}, 1, 'needs_teacher_review', 'not_assessed_yet', 'true'::jsonb, 'True', '{}'::jsonb, 'fixture', ${transaction.json({ dimensions: { topic: [`Animals ${guidanceId}`] }, evidenceTargets: [{ id: fixture.targetId, label: "animals" }] })})`;
@@ -205,7 +212,7 @@ test("an admin provisions a learner who signs in and starts a ready published pr
     await learnerPage.getByLabel("Password").fill(password);
     await learnerPage.getByRole("button", { name: "Sign in" }).click();
     await expect(learnerPage).toHaveURL(/\/learner$/);
-    await learnerPage.getByRole("link", { name: "Start" }).click();
+    await learnerPage.getByText("Animal listening").locator("..").getByRole("link", { name: "Start" }).click();
     await expect(learnerPage.getByText("Image").locator("..").getByText("Ready")).toBeVisible();
     await learnerPage.getByRole("button", { name: "Start" }).click();
     await expect(learnerPage).toHaveURL(new RegExp(`/learner/practice/${fixture.setId}/attempt/`));
@@ -220,6 +227,23 @@ test("an admin provisions a learner who signs in and starts a ready published pr
     } finally {
       await sql.end();
     }
+  } finally {
+    await learnerContext.close();
+  }
+});
+
+test("a published word-bank set without media prepares and starts", async ({ browser }) => {
+  const learnerContext = await browser.newContext();
+  const learnerPage = await learnerContext.newPage();
+  try {
+    await learnerContext.addCookies([{ name: "cambridgeyle_session", value: fixture.clozeLearnerSessionToken, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+    await learnerPage.goto("/learner");
+    const card = learnerPage.getByText("Word bank practice").locator("..");
+    await card.getByRole("link", { name: "Start" }).click();
+    await expect(learnerPage.getByText("No essential media is required for this practice.")).toBeVisible();
+    const start = await learnerPage.request.post("/api/practice/start", { data: { setId: fixture.clozeSetId } });
+    expect(start.status()).toBe(201);
+    expect((await start.json()).data.setId).toBe(fixture.clozeSetId);
   } finally {
     await learnerContext.close();
   }

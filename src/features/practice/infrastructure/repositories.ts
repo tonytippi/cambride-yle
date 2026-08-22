@@ -20,6 +20,7 @@ import { evaluateAnswer, normaliseAnswer } from "@/features/curriculum/domain/an
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import { authoriseMedia, isMediaGatewayConfigured } from "./media-gateway";
+import { normaliseChoiceLabel } from "@/features/content/domain/contracts";
 import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedEvidence, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
 import type { SubmittedEvidenceDetail, SubmittedEvidenceFilter, SubmittedEvidenceReader } from "../application/evidence-contract";
 
@@ -70,21 +71,23 @@ export async function recordRecommendation(learnerId: string, version: string, d
   await db.insert(practiceRecommendationAudits).values({ id: uuidv7(), learnerId, version, displayedSetIds });
 }
 
-type Snapshot = { set: { id: string; title: string; status: "published" | "retired" }; media: { id: string; mediaType: string; objectVersion: string; contentHash: string }[] };
+type Snapshot = { set: { id: string; title: string; status: "published" | "retired" }; items: { engine: LearnerEngine }[]; media: { id: string; mediaType: string; objectVersion: string; contentHash: string }[] };
 type SnapshotResult = Snapshot | { error: "SET_NOT_FOUND" | "SET_RETIRED" };
 async function publishedSnapshot(setId: string, db: Database): Promise<SnapshotResult> {
   const set = (await db.select({ id: practiceSets.id, title: practiceSets.title, status: practiceSets.status }).from(practiceSets).where(eq(practiceSets.id, setId)).limit(1))[0];
   if (!set) return { error: "SET_NOT_FOUND" as const };
   if (set.status !== "published") return { error: "SET_RETIRED" as const };
+  const items = await db.select({ engine: practiceSetItems.engine }).from(practiceSetItems).where(eq(practiceSetItems.practiceSetId, set.id));
   const media = await db.select({ id: practiceSetItemMedia.id, mediaType: practiceSetItemMedia.mediaType, objectVersion: practiceSetItemMedia.objectVersion, contentHash: practiceSetItemMedia.contentHash })
     .from(practiceSetItemMedia).innerJoin(practiceSetItems, eq(practiceSetItemMedia.practiceSetItemId, practiceSetItems.id)).where(eq(practiceSetItems.practiceSetId, set.id));
-  return { set, media };
+  return { set, items: items.map((item) => ({ engine: item.engine as LearnerEngine })), media };
 }
 
 export async function preparePublishedPractice(learnerId: string, setId: string, db: Database = database): Promise<PracticePreparation | { error: "SET_NOT_FOUND" | "SET_RETIRED" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" }> {
   const snapshot = await publishedSnapshot(setId, db);
   if ("error" in snapshot) return snapshot;
-  if (!snapshot.media.length) return { error: "ESSENTIAL_MEDIA_MISSING" };
+  if (!snapshot.media.length && snapshot.items.some((item) => item.engine !== "word_bank_cloze")) return { error: "ESSENTIAL_MEDIA_MISSING" };
+  if (!snapshot.media.length) return { setId: snapshot.set.id, setVersionId: snapshot.set.id, title: snapshot.set.title, assets: [] };
   if (!isMediaGatewayConfigured()) return { error: "MEDIA_AUTHORISATION_FAILED" };
   const assets = await Promise.all(snapshot.media.map(async (media): Promise<PracticePreparation["assets"][number] | undefined> => {
     if (media.mediaType !== "audio" && media.mediaType !== "image") return undefined;
@@ -104,7 +107,12 @@ export async function startPublishedPractice(learnerId: string, setId: string): 
     await tx.execute(sql`SELECT id FROM practice_sets WHERE id = ${setId} FOR UPDATE`);
     const snapshot = await publishedSnapshot(setId, tx);
     if ("error" in snapshot) return snapshot;
-    if (!snapshot.media.length) return { error: "ESSENTIAL_MEDIA_MISSING" };
+    if (!snapshot.media.length && snapshot.items.some((item) => item.engine !== "word_bank_cloze")) return { error: "ESSENTIAL_MEDIA_MISSING" };
+    if (!snapshot.media.length) {
+      const id = uuidv7();
+      await tx.insert(practiceAttempts).values({ id, learnerId, practiceSetId: setId, practiceSetVersionId: setId, revision: 0 });
+      return { attemptId: id, setId, setVersionId: setId, revision: 0, disposition: "started" };
+    }
     if (!isMediaGatewayConfigured()) return { error: "MEDIA_AUTHORISATION_FAILED" };
     for (const media of snapshot.media) {
       if (media.mediaType !== "audio" && media.mediaType !== "image") return { error: "MEDIA_UNAVAILABLE" };
@@ -126,7 +134,7 @@ const safeOptions = (value: unknown) => Array.isArray(value) && value.every((opt
 const safeMedia = (type: string, accessibility: unknown) => {
   const metadata = accessibility as { altText?: unknown; choiceLabel?: unknown } | null;
   const altText = typeof metadata?.altText === "string" && metadata.altText.trim() ? metadata.altText : undefined;
-  const choiceLabel = typeof metadata?.choiceLabel === "string" && metadata.choiceLabel.trim() ? metadata.choiceLabel : undefined;
+  const choiceLabel = typeof metadata?.choiceLabel === "string" && metadata.choiceLabel.trim() ? normaliseChoiceLabel(metadata.choiceLabel) : undefined;
   return type === "audio" || (type === "image" && altText) ? { altText, choiceLabel } : undefined;
 };
 

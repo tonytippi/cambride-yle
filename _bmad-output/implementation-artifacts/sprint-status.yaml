@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 08-22-2026 13:55
+last_updated: 08-22-2026 17:02
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
@@ -49,7 +49,7 @@ development_status:
   2-3-validate-review-and-phone-preview-content: done
   2-4-publish-immutable-practice-sets: done
   2-5-verify-pilot-content-readiness: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: in-progress
   3-1-choose-or-resume-practice: done
@@ -99,3 +99,59 @@ action_items:
     owner: "Development"
     status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-5-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-5-repair-the-content-immutable-history-mig"
+    epic: 2
+    action: "Repair the content immutable-history migration trigger split, add migrated
+      PostgreSQL update/delete regression coverage, and restore npm test to green."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-6-store-a-scoring-ready-immutable-answer-p"
+    epic: 2
+    action: "Store a scoring-ready immutable answer-policy version in practice-set
+      items and add a database-backed publish-start-submit regression test."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-7-enforce-engine-specific-essential-media"
+    epic: 2
+    action: "Enforce engine-specific essential media and accessible image choice labels
+      throughout draft validation, composition, and snapshots."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-8-enforce-selected-curriculum-guidance-max"
+    epic: 2
+    action: "Enforce selected curriculum guidance maxWords and maxOptions with named
+      findings before review and publication."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-9-implement-the-declared-independent-pract"
+    epic: 2
+    action: "Implement the declared independent practice-set draft/review/approval/publish/retire
+      lifecycle with audit evidence."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-10-partition-readiness-proof-by-published-t"
+    epic: 2
+    action: "Partition readiness proof by published topic/task-type and correctly
+      categorise vocabulary and grammar targets."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-11-add-staff-publication-to-learner-selecti"
+    epic: 2
+    action: "Add staff-publication-to-learner selection/submission and retirement-preservation
+      database-backed integration coverage."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
+  - id: "epic-2-retro-item-12-after-the-blocking-fixes-split-content-a"
+    epic: 2
+    action: "After the blocking fixes, split content application/repository concerns
+      by lifecycle use case to keep cross-story invariants reviewable."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"

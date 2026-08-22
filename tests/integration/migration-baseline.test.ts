@@ -105,6 +105,10 @@ describe("migration baseline", () => {
       "db/migrations/0025_practice_set_composition_trigger_fix.sql",
       "utf8",
     );
+    const historyTriggerFixMigration = await readFile(
+      "db/migrations/0026_content_history_trigger_fix.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -286,6 +290,8 @@ describe("migration baseline", () => {
     expect(journal).toContain("0025_practice_set_composition_trigger_fix");
     expect(compositionTriggerFixMigration).toContain("CREATE OR REPLACE FUNCTION allow_practice_set_composition_in_creation_transaction");
     expect(compositionTriggerFixMigration).toContain("to_jsonb(NEW)->>'practice_set_item_id'");
+    expect(journal).toContain("0026_content_history_trigger_fix");
+    expect(historyTriggerFixMigration).toContain("prevent_content_history_mutation");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
@@ -340,16 +346,22 @@ describe("migration baseline", () => {
           await transaction`INSERT INTO content_generation_records (id, kind, target_id, gateway_kind, endpoint, model, prompt_provenance, reference_provenance, output_hash) VALUES (${crypto.randomUUID()}, 'media', ${mediaId}, 'image', 'https://provider.example.test', 'model', '{}'::jsonb, '[]'::jsonb, 'hash')`;
           await transaction`INSERT INTO content_audit_events (id, actor_id, action, kind, target_id) VALUES (${crypto.randomUUID()}, ${accountId}, 'MEDIA_DRAFT_CREATED', 'media', ${mediaId})`;
           await expect(transaction.savepoint((savepoint) => savepoint`UPDATE media_drafts SET description = 'Changed' WHERE id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
-          await expect(transaction.savepoint((savepoint) => savepoint`UPDATE content_generation_records SET model = 'changed' WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
-          await expect(transaction.savepoint((savepoint) => savepoint`DELETE FROM content_audit_events WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
+           await expect(transaction.savepoint((savepoint) => savepoint`UPDATE content_generation_records SET model = 'changed' WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
+           await expect(transaction.savepoint((savepoint) => savepoint`DELETE FROM content_generation_records WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
+           await expect(transaction.savepoint((savepoint) => savepoint`DELETE FROM content_audit_events WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
+           await expect(transaction.savepoint((savepoint) => savepoint`UPDATE content_audit_events SET action = 'CHANGED' WHERE target_id = ${mediaId}`)).rejects.toThrow(/CONTENT_DRAFT_HISTORY_IMMUTABLE/);
           await expect(
-            transaction`UPDATE media_drafts SET status = 'in_review' WHERE id = ${mediaId}`,
+            transaction.savepoint((savepoint) =>
+              savepoint`UPDATE media_drafts SET status = 'in_review' WHERE id = ${mediaId}`,
+            ),
           ).rejects.toThrow(/CONTENT_REVIEW_EVIDENCE_REQUIRED/);
           await transaction`INSERT INTO content_validation_results (id, kind, target_id, actor_id, findings) VALUES (${validationId}, 'media', ${mediaId}, ${accountId}, '[]'::jsonb)`;
           await transaction`INSERT INTO content_review_records (id, kind, target_id, actor_id, decision, validation_result_id, findings) VALUES (${reviewId}, 'media', ${mediaId}, ${accountId}, 'submitted', ${validationId}, '[]'::jsonb)`;
           await transaction`UPDATE media_drafts SET status = 'in_review' WHERE id = ${mediaId}`;
           await expect(
-            transaction`UPDATE media_drafts SET status = 'approved' WHERE id = ${mediaId}`,
+            transaction.savepoint((savepoint) =>
+              savepoint`UPDATE media_drafts SET status = 'approved' WHERE id = ${mediaId}`,
+            ),
           ).rejects.toThrow(/CONTENT_APPROVAL_EVIDENCE_REQUIRED/);
           await transaction`INSERT INTO content_review_records (id, kind, target_id, actor_id, decision, validation_result_id, findings) VALUES (${approvalId}, 'media', ${mediaId}, ${accountId}, 'approved', ${validationId}, '[]'::jsonb)`;
           await transaction`UPDATE media_drafts SET status = 'approved' WHERE id = ${mediaId}`;

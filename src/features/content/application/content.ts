@@ -5,12 +5,14 @@ import type { Actor } from "@/features/identity/domain/contracts";
 import { serverConfig } from "@/shared/config/server";
 import {
   accessibilityLeakageFindings,
+  engineMediaFindings,
   composePracticeSetSchema,
   findingsFrom,
   generatedMediaOutputSchema,
   generatedQuestionOutputSchema,
   generationRequestSchema,
   mediaDraftSchema,
+  normaliseChoiceLabel,
   phonePreviewInputSchema,
   plainTextFindings,
   practiceSetWorkflowSchema,
@@ -226,6 +228,13 @@ async function validateReferences(
       code: "ANSWER_POLICY_SCOPE_MISMATCH",
       message: "The selected answer-policy version does not match this draft.",
     });
+  if (refs.guidance && "prompt" in input) {
+    const words = input.prompt ? input.prompt.trim().split(/\s+/).filter(Boolean).length : 0;
+    if (words > refs.guidance.maxWords)
+      findings.push({ field: "prompt", code: "TEMPLATE_MAX_WORDS_EXCEEDED", message: "The prompt exceeds the selected guidance word limit." });
+    if (input.options.length > refs.guidance.maxOptions)
+      findings.push({ field: "options", code: "TEMPLATE_MAX_OPTIONS_EXCEEDED", message: "The options exceed the selected guidance option limit." });
+  }
   if (findings.length)
     throw new ContentError(
       "VALIDATION_FAILED",
@@ -237,7 +246,11 @@ async function validateQuestionMedia(
   input: QuestionDraftInput,
   tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
 ) {
-  if (!input.mediaIds?.length) return;
+  if (!input.mediaIds?.length) {
+    const findings = engineMediaFindings(input.engine, []);
+    if (findings.length) throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", findings);
+    return;
+  }
   const media = await repository.lockCompatibleMediaForQuestion(input, tx);
   const findings: ContentFindings = [];
   if (media.length !== input.mediaIds.length)
@@ -246,7 +259,8 @@ async function validateQuestionMedia(
     if (item.paper !== input.paper || item.part !== String(input.part) || item.engine !== input.engine)
       findings.push({ field: "mediaIds", code: "MEDIA_SCOPE_MISMATCH", message: "Media must match the question paper, part and engine." });
     else if (item.status === "retired")
-      findings.push({ field: "mediaIds", code: "MEDIA_RETIRED", message: "Retired media cannot be associated with a question draft." });
+       findings.push({ field: "mediaIds", code: "MEDIA_RETIRED", message: "Retired media cannot be associated with a question draft." });
+  findings.push(...engineMediaFindings(input.engine, media.map((item) => ({ ...item, position: input.mediaIds!.indexOf(item.id) }))));
   if (findings.length) throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", findings);
 }
 export async function createManualQuestion(
@@ -350,11 +364,12 @@ const validateStored = async (
   if (input.kind === "question") {
     const associations = await repository.lockQuestionMediaEntries([input.targetId], tx);
     const question = item as Awaited<ReturnType<typeof repository.getQuestion>>;
-    const associated = associations.map((entry) => entry.media);
+    const associated = associations.map((entry) => ({ ...entry.media, position: entry.position - 1 }));
     if (associated.some((media) => media.status === "retired"))
       findings.push({ field: "mediaIds", code: "MEDIA_RETIRED", message: "Retired media cannot remain associated with a question draft." });
     if (associated.some((media) => media.paper !== question!.paper || media.part !== question!.part || media.engine !== question!.engine))
-      findings.push({ field: "mediaIds", code: "MEDIA_SCOPE_MISMATCH", message: "Media must match the question paper, part and engine." });
+       findings.push({ field: "mediaIds", code: "MEDIA_SCOPE_MISMATCH", message: "Media must match the question paper, part and engine." });
+    findings.push(...engineMediaFindings(question!.engine, associated));
   }
   if (input.kind === "question") {
     const question = item as Awaited<ReturnType<typeof repository.getQuestion>>;
@@ -460,13 +475,34 @@ const accepted = async (
   validationResultId: string,
   tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
 ) =>
-  !findings.length ||
+  !nonExceptionable(findings) &&
+  (!findings.length ||
   repository.hasExceptionForValidation(
     input.kind,
     input.targetId,
     validationResultId,
     tx,
+  ));
+const nonExceptionable = (findings: ContentFindings) =>
+  findings.some(
+    (finding) =>
+      finding.code === "IMAGE_MEDIA_REQUIRED" ||
+      finding.code === "AUDIO_MEDIA_REQUIRED" ||
+      finding.code.startsWith("CHOICE_LABEL_"),
   );
+const currentMediaFindings = async (
+  input: WorkflowInput,
+  item: Awaited<ReturnType<typeof repository.getContent>>,
+  tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
+) => {
+  if (input.kind !== "question") return [];
+  const question = item as Awaited<ReturnType<typeof repository.getQuestion>>;
+  const associations = await repository.lockQuestionMediaEntries([input.targetId], tx);
+  return engineMediaFindings(
+    question!.engine,
+    associations.map((entry) => ({ ...entry.media, position: entry.position - 1 })),
+  );
+};
 export async function validateContent(actor: Actor, input: WorkflowInput) {
   staff(actor);
   const valid = parse(workflowInputSchema, input);
@@ -530,6 +566,12 @@ export async function acceptException(
         "Only draft or in-review content can accept an exception.",
       );
     const { findings, validationResultId } = await unresolved(valid, tx);
+    if (nonExceptionable(findings))
+      throw new ContentError(
+        "VALIDATION_FAILED",
+        "Required learner media and picture-choice labels cannot be excepted.",
+        findings,
+      );
     if (!findings.length)
       throw new ContentError(
         "NO_FINDINGS_TO_EXCEPT",
@@ -605,11 +647,16 @@ export async function approveContent(actor: Actor, input: WorkflowInput) {
         "Rejected content cannot be approved; review its linked draft revision.",
       );
     const { findings, validationResultId } = await unresolved(valid, tx);
-    if (!(await accepted(valid, findings, validationResultId, tx)))
+    const currentFindings = await currentMediaFindings(valid, item, tx);
+    if (
+      nonExceptionable(findings) ||
+      nonExceptionable(currentFindings) ||
+      !(await accepted(valid, findings, validationResultId, tx))
+    )
       throw new ContentError(
         "VALIDATION_FAILED",
         "Resolve findings or record an exception.",
-        findings,
+        [...findings, ...currentFindings],
       );
     if (
       valid.kind === "media" &&
@@ -649,6 +696,13 @@ export async function publishContent(actor: Actor, input: WorkflowInput) {
       throw new ContentError(
         "CONTENT_TRANSITION_CONFLICT",
         "Only approved content can be published.",
+      );
+    const findings = await currentMediaFindings(valid, item, tx);
+    if (nonExceptionable(findings))
+      throw new ContentError(
+        "VALIDATION_FAILED",
+        "Required learner media and picture-choice labels cannot be excepted.",
+        findings,
       );
     await repository.updateStatus(valid.kind, valid.targetId, "published", tx);
     await repository.recordAudit(
@@ -738,18 +792,35 @@ export async function publishPracticeSet(
           });
       }
     }
-    for (const question of questions)
-      if (
-        (question.engine === "audio_picture_choice" ||
-          question.engine === "audio_note_taking") &&
-        !mediaByQuestion.get(question.id)?.some((item) => item.mediaType === "audio")
-      )
-        findings.push({
-          field: "mediaIds",
-          code: "AUDIO_MEDIA_REQUIRED",
-          message:
-            "This audio engine requires an associated published audio version.",
-        });
+    for (const question of questions) {
+      const questionMedia = mediaByQuestion.get(question.id) ?? [];
+      findings.push(...engineMediaFindings(question.engine, questionMedia.map((item, position) => ({ ...item, position }))));
+      const draft = {
+        ...question,
+        part: Number(question.part),
+        estimatedDurationSeconds: Number(question.estimatedDurationSeconds),
+        supportingTargetIds: question.supportingTargetIds as string[],
+        topicIds: question.topicIds as string[],
+        mediaIds: undefined,
+      } as QuestionDraftInput;
+      try {
+        await validateReferences(draft, tx);
+      } catch (error) {
+        if (error instanceof ContentError) findings.push(...error.findings);
+        else throw error;
+      }
+      const references = await repository.getControlledReferences(draft, tx);
+      if (question.engine === "audio_picture_choice" && references.policy?.version) {
+        const labels = questionMedia
+          .filter((item) => item.mediaType === "image")
+          .map((item) => (item.accessibilityMetadata as { choiceLabel?: unknown } | null)?.choiceLabel)
+          .filter((label): label is string => typeof label === "string")
+          .map(normaliseChoiceLabel);
+        const answers = [references.policy.version.canonicalAnswer, ...(references.policy.version.acceptedAnswers as unknown[])];
+        if (references.policy.version.inputKind !== "choice" || answers.some((answer) => typeof answer !== "string" || !labels.includes(normaliseChoiceLabel(answer))))
+          findings.push({ field: "mediaIds", code: "CHOICE_LABEL_POLICY_MISMATCH", message: "Picture-choice labels must include every answer accepted by the selected policy." });
+      }
+    }
     const paperParts = new Set(
       questions.map((question) => `${question.paper}:${question.part}`),
     );
@@ -866,6 +937,9 @@ export async function rejectContent(
       accessibilityMetadata: draft.accessibilityMetadata,
       provenance: draft.provenance,
     };
+    const sourceMediaIds = valid.kind === "question"
+      ? (await repository.getQuestionMediaEntries([valid.targetId], tx)).map((entry) => entry.media.id)
+      : [];
     const source =
       valid.kind === "question"
         ? questionDraftSchema.parse({
@@ -874,7 +948,7 @@ export async function rejectContent(
             prompt: draft.prompt,
             options: draft.options,
             postSubmitHint: draft.postSubmitHint ?? undefined,
-            mediaIds: [],
+            mediaIds: sourceMediaIds,
           })
         : mediaDraftSchema.parse({
             ...base,

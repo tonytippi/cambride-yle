@@ -3,13 +3,14 @@ import { z } from "zod";
 export const engines = ["picture_true_false", "picture_yes_no", "audio_picture_choice", "audio_note_taking", "word_bank_cloze"] as const;
 const id = z.uuid();
 export const normalisePlainText = (value: string) => value.replace(/\s+/g, " ").trim();
+export const normaliseChoiceLabel = normalisePlainText;
 export const plainTextFindings = (field: string, value: unknown): ContentFindings => typeof value !== "string" ? [{ field, code: "STAFF_TEXT_INVALID", message: "Staff text must be plain text." }] : [
   ...(/<\/?[a-z][^>]*>|&(?:#\d+|#x[0-9a-f]+|[a-z]+);/i.test(value) ? [{ field, code: "STAFF_TEXT_MARKUP", message: "Staff text must not contain HTML or markup." }] : []),
   ...(value !== normalisePlainText(value) ? [{ field, code: "STAFF_TEXT_WHITESPACE_NOT_NORMALISED", message: "Staff text whitespace must be normalised." }] : []),
 ];
 const plainText = (max: number) => z.string().transform(normalisePlainText).pipe(z.string().min(1).max(max).refine((value) => !plainTextFindings("text", value).some((finding) => finding.code === "STAFF_TEXT_MARKUP"), "STAFF_TEXT_MARKUP"));
 const plainTextOption = plainText(500);
-const metadata = z.object({ altText: plainText(500) }).strict();
+const metadata = z.object({ altText: plainText(500), choiceLabel: plainText(120).optional() }).strict();
 const provenance = z.object({ source: plainText(500), rightsReference: plainText(500) }).strict();
 const postSubmitHint = z.object({ locale: z.literal("en-GB"), message: plainText(500) }).strict();
 const httpsUrl = (value: string) => {
@@ -56,6 +57,40 @@ export const accessibilityLeakageFindings = (altText: unknown, options: unknown)
   const findings: ContentFindings = [];
   if (/\b(?:correct\s*(?:answer\s*)?(?:is|was)|answer\s+(?:is|was)|choose\s+true\s*\/\s*false)\b|\b(?:correct\s+answer|correct|answer)\s*:|\b[\p{L}\p{N}][\p{L}\p{N}\s-]{0,120}\s+is\s+correct\b/iu.test(altText)) findings.push({ field: "accessibilityMetadata.altText", code: "ACCESSIBILITY_ANSWER_LEAKAGE", message: "Alternative text must not disclose the answer." });
   if (Array.isArray(options) && options.some((option) => typeof option === "string" && option.trim() && new RegExp(`(?:^|[^\\p{L}\\p{N}])${tokenPattern(option.trim())}(?:$|[^\\p{L}\\p{N}])`, "iu").test(altText))) findings.push({ field: "accessibilityMetadata.altText", code: "ACCESSIBILITY_OPTION_LEAKAGE", message: "Alternative text must not disclose an answer option." });
+  return findings;
+};
+type AssociatedMedia = {
+  id?: string;
+  mediaType: string;
+  accessibilityMetadata: unknown;
+  position?: number;
+};
+const labelFindings = (value: unknown, position: number): ContentFindings => {
+  const field = `mediaIds.${position}.accessibilityMetadata.choiceLabel`;
+  if (typeof value !== "string" || !value.trim())
+    return [{ field, code: "CHOICE_LABEL_REQUIRED", message: "Each picture choice needs a plain-text label." }];
+  const findings = plainTextFindings(field, value);
+  if (/\b(?:correct|answer|right|wrong)\b/iu.test(value))
+    findings.push({ field, code: "CHOICE_LABEL_ANSWER_REVEALING", message: "Picture-choice labels must not reveal an answer." });
+  return findings;
+};
+export const engineMediaFindings = (engine: typeof engines[number], media: AssociatedMedia[]): ContentFindings => {
+  const images = media.filter((item) => item.mediaType === "image");
+  const audio = media.filter((item) => item.mediaType === "audio");
+  if (engine === "picture_true_false" || engine === "picture_yes_no")
+    return images.length ? [] : [{ field: "mediaIds", code: "IMAGE_MEDIA_REQUIRED", message: "This picture engine requires an associated image version." }];
+  if (engine === "audio_note_taking")
+    return audio.length ? [] : [{ field: "mediaIds", code: "AUDIO_MEDIA_REQUIRED", message: "This audio engine requires an associated audio version." }];
+  if (engine !== "audio_picture_choice") return [];
+  const findings: ContentFindings = audio.length ? [] : [{ field: "mediaIds", code: "AUDIO_MEDIA_REQUIRED", message: "This audio engine requires an associated audio version." }];
+  if (!images.length) findings.push({ field: "mediaIds", code: "IMAGE_MEDIA_REQUIRED", message: "Audio picture choice requires associated image versions." });
+  const labels = images.map((item, index) => {
+    const label = (item.accessibilityMetadata as { choiceLabel?: unknown } | null)?.choiceLabel;
+    findings.push(...labelFindings(label, item.position ?? index));
+    return typeof label === "string" ? normaliseChoiceLabel(label) : undefined;
+  });
+  if (labels.filter(Boolean).length !== new Set(labels.filter(Boolean)).size)
+    findings.push({ field: "mediaIds", code: "CHOICE_LABEL_DUPLICATE", message: "Picture-choice labels must be unique." });
   return findings;
 };
 export const contentKindSchema = z.enum(["question", "media"]);

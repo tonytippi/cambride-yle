@@ -87,6 +87,7 @@ const input = {
     source: "Original staff writing",
     rightsReference: "Centre-owned",
   },
+  mediaIds: ["018f0000-0000-7000-8000-000000000015"],
 };
 describe("content draft use cases", () => {
   /* eslint-disable no-unused-vars */
@@ -102,7 +103,7 @@ describe("content draft use cases", () => {
         { id: input.primaryTargetId, isApproved: true },
         { id: input.topicIds[0], isApproved: true },
       ],
-      guidance: { paper: input.paper, part: input.part, engine: input.engine },
+      guidance: { paper: input.paper, part: input.part, engine: input.engine, maxWords: 10, maxOptions: 2 },
       policy: {
         policy: {
           targetId: input.primaryTargetId,
@@ -125,9 +126,9 @@ describe("content draft use cases", () => {
     });
     dependencies.lockQuestions.mockImplementation((ids: string[]) => dependencies.getQuestions(ids));
     dependencies.lockMediaVersions.mockImplementation((ids: string[]) => dependencies.getMediaVersions(ids));
-    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([]);
+    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: input.mediaIds[0], paper: input.paper, part: "1", engine: input.engine, status: "draft", mediaType: "image", accessibilityMetadata: { altText: "A cat" } }]);
     dependencies.getQuestionMediaEntries.mockResolvedValue([]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([{ questionVersionId: "018f0000-0000-7000-8000-000000000009", media: { id: input.mediaIds[0], paper: input.paper, part: "1", engine: input.engine, status: "published", mediaType: "image", accessibilityMetadata: { altText: "A cat" } } }]);
     dependencies.recordValidation.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000010",
     );
@@ -152,7 +153,7 @@ describe("content draft use cases", () => {
   it("validates AI question media before invoking the provider and persists it with the draft", async () => {
     config.AI_DRAFT_PROVIDER_GATE_CLOSED = true;
     const mediaId = "018f0000-0000-7000-8000-000000000015";
-    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: mediaId, paper: input.paper, part: "1", engine: input.engine, status: "draft" }]);
+    dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: mediaId, paper: input.paper, part: "1", engine: input.engine, status: "draft", mediaType: "image", accessibilityMetadata: { altText: "A cat" } }]);
     dependencies.generate.mockResolvedValue({ endpoint: "https://ai.example.test", model: "text-model", output: { prompt: "Generated cat prompt", options: ["true", "false"] } });
     dependencies.createQuestion.mockResolvedValue("018f0000-0000-7000-8000-000000000016");
     await requestAiDraft(lead, { kind: "text", staffPrompt: "Create a draft", permittedReferences: [], draft: { ...input, mediaIds: [mediaId] } });
@@ -611,6 +612,55 @@ describe("content draft use cases", () => {
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     expect(dependencies.updateStatus).not.toHaveBeenCalled();
   });
+  it("does not accept exceptions for essential media or picture-choice label findings", async () => {
+    dependencies.latestValidation.mockResolvedValue({
+      id: "018f0000-0000-7000-8000-000000000010",
+      findings: [{ field: "mediaIds", code: "CHOICE_LABEL_REQUIRED", message: "A label is required." }],
+    });
+    await expect(
+      acceptException(lead, {
+        kind: "question",
+        targetId: "018f0000-0000-7000-8000-000000000009",
+        reason: "Legacy exception",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(dependencies.recordReview).not.toHaveBeenCalledWith(
+      "question",
+      expect.any(String),
+      lead.id,
+      "exception",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+  it("blocks approval and publication when current legacy media is unsafe despite an exception", async () => {
+    const targetId = "018f0000-0000-7000-8000-000000000009";
+    dependencies.getContent.mockResolvedValue({
+      ...input,
+      id: targetId,
+      status: "in_review",
+      part: "1",
+      estimatedDurationSeconds: "60",
+    });
+    dependencies.latestValidation.mockResolvedValue({
+      id: "018f0000-0000-7000-8000-000000000010",
+      findings: [{ field: "prompt", code: "MISSING", message: "Legacy wording finding." }],
+    });
+    dependencies.hasExceptionForValidation.mockResolvedValue(true);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
+    await expect(approveContent(lead, { kind: "question", targetId })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      findings: expect.arrayContaining([expect.objectContaining({ code: "IMAGE_MEDIA_REQUIRED" })]),
+    });
+    dependencies.getContent.mockResolvedValue({ ...input, id: targetId, status: "approved" });
+    await expect(publishContent(lead, { kind: "question", targetId })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      findings: expect.arrayContaining([expect.objectContaining({ code: "IMAGE_MEDIA_REQUIRED" })]),
+    });
+    expect(dependencies.updateStatus).not.toHaveBeenCalled();
+  });
   it("requires persisted phone evidence for server-side image approval", async () => {
     dependencies.getContent.mockResolvedValue({
       ...input,
@@ -691,6 +741,14 @@ describe("content draft use cases", () => {
       { transaction: "boundary" },
       "018f0000-0000-7000-8000-000000000009",
     );
+  });
+  it("preserves question-media associations when a rejected question becomes a revision", async () => {
+    const sourceMediaId = "018f0000-0000-7000-8000-000000000015";
+    dependencies.getContent.mockResolvedValue({ ...input, id: "018f0000-0000-7000-8000-000000000009", status: "in_review", origin: "manual", part: "1", estimatedDurationSeconds: "60" });
+    dependencies.getQuestionMediaEntries.mockResolvedValue([{ questionVersionId: "018f0000-0000-7000-8000-000000000009", position: 1, media: { id: sourceMediaId } }]);
+    dependencies.createQuestion.mockResolvedValue("018f0000-0000-7000-8000-000000000011");
+    await rejectContent(lead, { kind: "question", targetId: "018f0000-0000-7000-8000-000000000009", reason: "Needs clearer wording" });
+    expect(dependencies.createQuestion).toHaveBeenCalledWith(expect.objectContaining({ mediaIds: [sourceMediaId] }), lead.id, "manual", { transaction: "boundary" }, "018f0000-0000-7000-8000-000000000009");
   });
   it("limits preview confirmation to successful 375px image media in review", async () => {
     dependencies.getContent.mockResolvedValue({
@@ -910,6 +968,19 @@ describe("content draft use cases", () => {
     });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
+  it("revalidates published question references and picture labels against the answer policy", async () => {
+    const questionId = "018f0000-0000-7000-8000-000000000009";
+    dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_picture_choice", part: "1", estimatedDurationSeconds: "300" }]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([
+      { questionVersionId: questionId, media: { id: "audio", paper: input.paper, part: "1", engine: "audio_picture_choice", status: "published", mediaType: "audio", accessibilityMetadata: { altText: "Audio" } } },
+      { questionVersionId: questionId, media: { id: "image", paper: input.paper, part: "1", engine: "audio_picture_choice", status: "published", mediaType: "image", accessibilityMetadata: { altText: "Bird", choiceLabel: "Bird" } } },
+    ]);
+    dependencies.getControlledReferences.mockResolvedValue({ targets: [{ id: input.primaryTargetId, isApproved: true }, { id: input.topicIds[0], isApproved: true }], guidance: { paper: input.paper, part: input.part, engine: "audio_picture_choice", maxWords: 10, maxOptions: 2 }, policy: { policy: { targetId: input.primaryTargetId, guidanceId: input.guidanceId, paper: input.paper, part: input.part, engine: "audio_picture_choice" }, version: { inputKind: "choice", canonicalAnswer: "Cat", acceptedAnswers: [] } } });
+    await expect(publishPracticeSet(lead, { title: "Audio picture practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "CHOICE_LABEL_POLICY_MISMATCH" })]) });
+    dependencies.getControlledReferences.mockResolvedValue({ targets: [], guidance: { paper: input.paper, part: input.part, engine: "audio_picture_choice", maxWords: 10, maxOptions: 2 }, policy: { policy: { targetId: input.primaryTargetId, guidanceId: input.guidanceId, paper: input.paper, part: input.part, engine: "audio_picture_choice" }, version: { inputKind: "choice", canonicalAnswer: "Bird", acceptedAnswers: [] } } });
+    await expect(publishPracticeSet(lead, { title: "Audio picture practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "TARGET_NOT_CONTROLLED" })]) });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
   it("requires audio media even when an audio question has no mapping", async () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
     dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_note_taking", part: "1", estimatedDurationSeconds: "300" }]);
@@ -928,7 +999,7 @@ describe("content draft use cases", () => {
       postSubmitHint: { locale: "en-GB", message: "Look carefully at the picture." },
     };
     dependencies.getQuestions.mockResolvedValue([question]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([{ questionVersionId: questionId, media: { id: input.mediaIds[0], paper: input.paper, part: "1", engine: input.engine, status: "published", mediaType: "image", accessibilityMetadata: { altText: "A cat" } } }]);
     dependencies.createPublishedPracticeSet.mockResolvedValue(
       "018f0000-0000-7000-8000-000000000014",
     );

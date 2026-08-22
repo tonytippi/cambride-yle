@@ -500,6 +500,14 @@ export async function createPublishedPracticeSet(
       )
       .where(eq(answerPolicyVersions.id, question.answerPolicyVersionId))
       .limit(1);
+    const policySnapshot = policy[0] && {
+      ...policy[0].version,
+      policyVersionId: policy[0].version.id,
+      policyId: policy[0].policy.id,
+      canonicalId: policy[0].policy.canonicalId,
+    };
+    if (!policySnapshot)
+      throw new Error("ANSWER_POLICY_VERSION_NOT_FOUND");
     await db.insert(practiceSetItems).values({
       id: itemId,
       practiceSetId: id,
@@ -508,7 +516,7 @@ export async function createPublishedPracticeSet(
       engine: question.engine,
       renderedPrompt: question.prompt,
       renderedOptions: question.options,
-      answerPolicy: policy[0],
+      answerPolicy: policySnapshot,
       feedback: { postSubmitHint: question.postSubmitHint ?? null },
       tags: {
         primaryTargetId: question.primaryTargetId,
