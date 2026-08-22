@@ -27,8 +27,8 @@ describe("published practice snapshots", () => {
   it("publishes a current policy snapshot that a learner can score and submit", async () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
     try {
-      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('practice_sets', 'practice_attempts', 'answer_policy_versions', 'submitted_evidence_facts')`;
-      if (tables.length !== 4) return;
+      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('practice_sets', 'practice_attempts', 'answer_policy_versions', 'submitted_evidence_facts', 'practice_set_audit_events', 'practice_set_review_records')`;
+      expect(tables).toHaveLength(6);
 
       const suffix = crypto.randomUUID();
       const leadId = crypto.randomUUID();
@@ -54,6 +54,18 @@ describe("published practice snapshots", () => {
       await submitPracticeSetForReview(lead(leadId), { practiceSetId: setId });
       await approvePracticeSet(admin(adminId), { practiceSetId: setId });
       await publishPracticeSet(lead(leadId), { practiceSetId: setId });
+      const reviews = await sql<{ actor_id: string; decision: string }[]>`SELECT actor_id, decision FROM practice_set_review_records WHERE practice_set_id = ${setId} ORDER BY created_at, id`;
+      expect(reviews).toEqual([
+        { actor_id: leadId, decision: "submitted" },
+        { actor_id: adminId, decision: "approved" },
+      ]);
+      const lifecycleBeforeRetirement = await sql<{ actor_id: string; action: string }[]>`SELECT actor_id, action FROM practice_set_audit_events WHERE practice_set_id = ${setId} ORDER BY created_at, id`;
+      expect(lifecycleBeforeRetirement).toEqual([
+        { actor_id: leadId, action: "PRACTICE_SET_DRAFT_CREATED" },
+        { actor_id: leadId, action: "PRACTICE_SET_SUBMITTED" },
+        { actor_id: adminId, action: "PRACTICE_SET_APPROVED" },
+        { actor_id: leadId, action: "PRACTICE_SET_PUBLISHED" },
+      ]);
       const [snapshot] = await sql<{ answer_policy: { canonicalAnswer?: string; version?: unknown } }[]>`SELECT answer_policy FROM practice_set_items WHERE practice_set_id = ${setId}`;
       expect(snapshot.answer_policy).toMatchObject({
         canonicalAnswer: "cat",
@@ -67,16 +79,21 @@ describe("published practice snapshots", () => {
       expect(started).toMatchObject({ data: { setId, revision: 0, disposition: "started" } });
       if (!("data" in started)) throw new Error("Practice did not start");
 
-       const player = await getPracticePlayer(learner(learnerId), {
+      const player = await getPracticePlayer(learner(learnerId), {
         setId,
         attemptId: started.data.attemptId,
       });
       expect(player).toMatchObject({ data: { items: [{ engine: "word_bank_cloze" }] } });
-       if (!("data" in player)) throw new Error("Practice player was invalid");
+      if (!("data" in player)) throw new Error("Practice player was invalid");
 
-       await retirePracticeSet(admin(adminId), { practiceSetId: setId });
-       await expect(startPractice(learner(freshLearnerId), { setId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });
-       await expect(getPracticePlayer(learner(learnerId), { setId, attemptId: started.data.attemptId })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId } });
+      await retirePracticeSet(admin(adminId), { practiceSetId: setId });
+      await expect(startPractice(learner(freshLearnerId), { setId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });
+      await expect(getPracticePlayer(learner(learnerId), { setId, attemptId: started.data.attemptId })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId } });
+      const lifecycleAfterRetirement = await sql<{ actor_id: string; action: string }[]>`SELECT actor_id, action FROM practice_set_audit_events WHERE practice_set_id = ${setId} ORDER BY created_at, id`;
+      expect(lifecycleAfterRetirement).toEqual([
+        ...lifecycleBeforeRetirement,
+        { actor_id: adminId, action: "PRACTICE_SET_RETIRED" },
+      ]);
 
       const saved = await savePracticeResponse(learner(learnerId), {
         setId,
@@ -94,8 +111,9 @@ describe("published practice snapshots", () => {
           idempotencyKey: crypto.randomUUID(),
         }),
       ).resolves.toMatchObject({ data: { attemptId: started.data.attemptId, setId, revision: 2 } });
-       await expect(sql<{ outcome: string }[]>`SELECT outcome::text FROM practice_attempt_review_items WHERE attempt_id = ${started.data.attemptId}`).resolves.toEqual([{ outcome: "correct" }]);
-       await expect((await import("@/features/practice/application/practice")).getSubmittedPracticeReview(learner(learnerId), { setId, attemptId: started.data.attemptId })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId, items: [{ outcome: "correct" }] } });
+      await expect(sql<{ outcome: string }[]>`SELECT outcome::text FROM practice_attempt_review_items WHERE attempt_id = ${started.data.attemptId}`).resolves.toEqual([{ outcome: "correct" }]);
+      await expect((await import("@/features/practice/application/practice")).getSubmittedPracticeReview(learner(learnerId), { setId, attemptId: started.data.attemptId })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId, items: [{ outcome: "correct" }] } });
+      await expect(sql<{ actor_id: string; action: string }[]>`SELECT actor_id, action FROM practice_set_audit_events WHERE practice_set_id = ${setId} ORDER BY created_at, id`).resolves.toEqual(lifecycleAfterRetirement);
     } finally {
       await sql.end();
     }
