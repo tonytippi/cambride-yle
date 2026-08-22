@@ -101,6 +101,10 @@ describe("migration baseline", () => {
       "db/migrations/0024_teacher_evidence_resolution.sql",
       "utf8",
     );
+    const compositionTriggerFixMigration = await readFile(
+      "db/migrations/0025_practice_set_composition_trigger_fix.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -279,6 +283,9 @@ describe("migration baseline", () => {
     expect(journal).toContain("0024_teacher_evidence_resolution");
     expect(evidenceResolutionMigration).toContain('CREATE TABLE "teacher_evidence_resolutions"');
     expect(evidenceResolutionMigration).toContain("TEACHER_EVIDENCE_RESOLUTION_IMMUTABLE");
+    expect(journal).toContain("0025_practice_set_composition_trigger_fix");
+    expect(compositionTriggerFixMigration).toContain("CREATE OR REPLACE FUNCTION allow_practice_set_composition_in_creation_transaction");
+    expect(compositionTriggerFixMigration).toContain("to_jsonb(NEW)->>'practice_set_item_id'");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {

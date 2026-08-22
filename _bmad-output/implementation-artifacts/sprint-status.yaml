@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 08-22-2026
+last_updated: 08-22-2026 13:55
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
@@ -65,10 +65,10 @@ development_status:
   4-3-resolve-uncertain-item-outcomes: done
   epic-4-retrospective: done
 
-  epic-5: in-progress
+  epic-5: done
   5-1-set-up-a-supervised-first-practice-session: done
   5-2-review-first-practice-evidence-and-deactivate-access: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 action_items:
   - id: "epic-4-retro-item-1-refactor-resolution-rebuild-to-preserve"
     epic: 4
@@ -83,3 +83,19 @@ action_items:
     owner: "Development"
     status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-4-retro-08-21-2026.md"
+  - id: "epic-5-retro-item-3-extend-the-deactivation-e2e-to-replay-th"
+    epic: 5
+    action: "Extend the deactivation E2E to replay the learner pre-existing session
+      token against a protected learner/practice route after named deactivation, asserting
+      the session is rejected and no protected data or mutation remains available."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-5-retro-08-22-2026.md"
+  - id: "epic-5-retro-item-4-add-a-composed-first-practice-test-cover"
+    epic: 5
+    action: "Add a composed first-practice test covering admin provisioning of an
+      ordinary learner, learner sign-in, published-set selection with ready essential
+      media, and authoritative persisted attempt start."
+    owner: "Development"
+    status: done
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-5-retro-08-22-2026.md"

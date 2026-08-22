@@ -21,7 +21,7 @@ export async function createSession(accountId: string, db: Database = database) 
   const token = randomBytes(32).toString("base64url");
   const id = uuidv7();
   const verifierHash = createHash("sha256").update(token).digest("hex");
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
   const inserted = await db.execute<{ id: string }>(sql`INSERT INTO sessions (id, account_id, verifier_hash, expires_at)
     SELECT ${id}, ${accountId}, ${verifierHash}, ${expiresAt}
     FROM accounts WHERE id = ${accountId} AND status = 'active' FOR UPDATE
