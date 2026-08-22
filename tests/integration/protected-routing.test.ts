@@ -30,6 +30,11 @@ describe("protected routing", () => {
       await expect(requireRole(["admin"])).rejects.toThrow(`REDIRECT:/${role === "academic_lead" ? "academic-lead" : role}?notice=${encodeURIComponent("You do not have access to that page.")}`);
     }
   });
+  it("redirects an admin away from learner-only pages", async () => {
+    dependencies.cookie.mockReturnValue({ value: "admin-session" });
+    dependencies.getActorBySessionToken.mockResolvedValue({ id: "opaque-admin", role: "admin", email: "admin@example.test", displayName: "Admin" });
+    await expect(requireRole(["learner"])).rejects.toThrow(`REDIRECT:/admin?notice=${encodeURIComponent("You do not have access to that page.")}`);
+  });
   it("allows every active staff role to enter the teacher evidence route", async () => {
     dependencies.cookie.mockReturnValue({ value: "staff-session" });
     for (const role of ["teacher", "academic_lead", "admin"] as const) {

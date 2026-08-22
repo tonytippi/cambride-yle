@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dependencies = vi.hoisted(() => ({ execute: vi.fn(), update: vi.fn(), insert: vi.fn(), sessions: vi.fn() }));
+const dependencies = vi.hoisted(() => ({ execute: vi.fn(), select: vi.fn(), update: vi.fn(), insert: vi.fn(), sessions: vi.fn() }));
 vi.mock("@/infrastructure/database/client", () => ({ database: {} }));
 
-import { changeAccountRole, createSession, deactivateAccount } from "@/features/identity/infrastructure/repositories";
+import { changeAccountRole, createSession, deactivateAccount, getCentreAccountDetail, listCentreAccounts } from "@/features/identity/infrastructure/repositories";
 
 const adminId = "018f0000-0000-7000-8000-000000000001";
 const learnerId = "018f0000-0000-7000-8000-000000000002";
@@ -11,6 +11,28 @@ const statementText = (statement: { queryChunks: Array<{ value?: string[] }> }) 
 
 describe("identity repository locking", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("returns persisted creation and lifecycle values in the centre-account list", async () => {
+    const createdAt = new Date("2026-08-22T09:00:00Z");
+    const orderBy = vi.fn().mockResolvedValue([{ id: learnerId, createdAt, status: "active" }]);
+    const from = vi.fn(() => ({ orderBy }));
+    const select = vi.fn(() => ({ from }));
+    const accounts = await listCentreAccounts({ select } as never);
+    expect(accounts).toEqual([{ id: learnerId, createdAt, status: "active" }]);
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ createdAt: expect.anything(), status: expect.anything(), deactivatedAt: expect.anything() }));
+  });
+
+  it("returns persisted creation and lifecycle values in centre-account detail", async () => {
+    const createdAt = new Date("2026-08-22T09:00:00Z");
+    const detailLimit = vi.fn().mockResolvedValue([{ id: learnerId, createdAt, status: "deactivated", deactivatedAt: createdAt, deactivatedBy: adminId }]);
+    const detailWhere = vi.fn(() => ({ limit: detailLimit }));
+    const historyOrderBy = vi.fn().mockResolvedValue([]);
+    const historyWhere = vi.fn(() => ({ orderBy: historyOrderBy }));
+    const from = vi.fn().mockReturnValueOnce({ where: detailWhere }).mockReturnValueOnce({ where: historyWhere });
+    const select = vi.fn(() => ({ from }));
+    await expect(getCentreAccountDetail(learnerId, { select } as never)).resolves.toMatchObject({ account: { id: learnerId, createdAt, status: "deactivated", deactivatedAt: createdAt } });
+    expect(select.mock.calls.at(0)).toEqual([expect.objectContaining({ createdAt: expect.anything(), status: expect.anything(), deactivatedAt: expect.anything(), deactivatedBy: expect.anything() })]);
+  });
 
   it("locks the account while checking active status before creating a session", async () => {
     dependencies.execute.mockResolvedValueOnce([{ id: "session" }]);

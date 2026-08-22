@@ -63,6 +63,7 @@ describe("practice preparation and start", () => {
   beforeEach(() => { vi.clearAllMocks(); });
   it("authorises learners and rejects invalid preparation input before repository access", async () => {
     await expect(preparePractice({ ...learner, role: "teacher" }, { setId: learner.id })).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
+    await expect(preparePractice({ ...learner, role: "admin" }, { setId: learner.id })).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
     await expect(preparePractice(learner, { setId: "not-a-uuid" })).resolves.toMatchObject({ error: { code: "INPUT_INVALID" } });
     expect(dependencies.preparePublishedPractice).not.toHaveBeenCalled();
   });
@@ -73,6 +74,8 @@ describe("practice preparation and start", () => {
     await expect(preparePractice(learner, { setId: learner.id })).resolves.toMatchObject({ error: { code: "ESSENTIAL_MEDIA_MISSING" } });
   });
   it("returns authoritative start and resume states without creating a client-side substitute", async () => {
+    await expect(startPractice({ ...learner, role: "admin" }, { setId: learner.id })).resolves.toMatchObject({ error: { code: "FORBIDDEN" } });
+    expect(dependencies.startPublishedPractice).not.toHaveBeenCalled();
     dependencies.startPublishedPractice.mockResolvedValueOnce({ attemptId: learner.id, setId: learner.id, setVersionId: learner.id, revision: 0, disposition: "started" });
     await expect(startPractice(learner, { setId: learner.id })).resolves.toMatchObject({ data: { disposition: "started" } });
     dependencies.startPublishedPractice.mockResolvedValueOnce({ attemptId: learner.id, setId: learner.id, setVersionId: learner.id, revision: 2, disposition: "resume" });

@@ -45,10 +45,10 @@ export async function createAccount(input: { email: string; displayName: string;
   const id = uuidv7(); await db.insert(accounts).values({ id, ...input, canonicalEmail: canonicalEmail(input.email) }); await db.insert(auditEvents).values({ id: uuidv7(), actorId, action: "ACCOUNT_CREATED", targetId: id }); return id;
 }
 export async function listCentreAccounts(db: Database = database) {
-  return db.select({ id: accounts.id, email: accounts.email, displayName: accounts.displayName, role: accounts.role, status: accounts.status, deactivatedAt: accounts.deactivatedAt }).from(accounts).orderBy(accounts.displayName, accounts.email);
+  return db.select({ id: accounts.id, email: accounts.email, displayName: accounts.displayName, role: accounts.role, status: accounts.status, createdAt: accounts.createdAt, deactivatedAt: accounts.deactivatedAt }).from(accounts).orderBy(accounts.displayName, accounts.email);
 }
 export async function getCentreAccountDetail(id: string, db: Database = database) {
-  const account = (await db.select({ id: accounts.id, email: accounts.email, displayName: accounts.displayName, role: accounts.role, status: accounts.status, deactivatedAt: accounts.deactivatedAt, deactivatedBy: accounts.deactivatedBy }).from(accounts).where(eq(accounts.id, id)).limit(1))[0];
+  const account = (await db.select({ id: accounts.id, email: accounts.email, displayName: accounts.displayName, role: accounts.role, status: accounts.status, createdAt: accounts.createdAt, deactivatedAt: accounts.deactivatedAt, deactivatedBy: accounts.deactivatedBy }).from(accounts).where(eq(accounts.id, id)).limit(1))[0];
   if (!account) return undefined;
   const history = await db.select({ id: auditEvents.id, actorId: auditEvents.actorId, action: auditEvents.action, targetId: auditEvents.targetId, createdAt: auditEvents.createdAt }).from(auditEvents).where(eq(auditEvents.targetId, id)).orderBy(desc(auditEvents.createdAt));
   return { account, history };
