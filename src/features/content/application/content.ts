@@ -734,7 +734,7 @@ export async function retireContent(actor: Actor, input: WorkflowInput) {
     );
   });
 }
-export async function publishPracticeSet(
+export async function createPracticeSetDraft(
   actor: Actor,
   input: ComposePracticeSetInput,
 ) {
@@ -742,6 +742,64 @@ export async function publishPracticeSet(
   const valid = parse(composePracticeSetSchema, input);
   return database.transaction(async (tx) => {
     const questions = await repository.lockQuestions(valid.questionIds, tx);
+    if (questions.length !== valid.questionIds.length)
+      throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", [{ field: "questionIds", code: "QUESTION_NOT_FOUND", message: "Every selected question version must exist." }]);
+    const paperParts = new Set(questions.map((question) => `${question.paper}:${question.part}`));
+    const duration = questions.reduce((total, question) => total + Number(question.estimatedDurationSeconds), 0);
+    const objectives = new Set(questions.map((question) => question.primaryTargetId));
+    const findings: ContentFindings = [
+      ...(questions.some((question) => question.status !== "published") ? [{ field: "questionIds", code: "QUESTION_NOT_PUBLISHED", message: "Every selected question must be published before drafting a practice set." }] : []),
+      ...(paperParts.size === 1 ? [] : [{ field: "questionIds", code: "PAPER_PART_MISMATCH", message: "A set must use one paper and part." }]),
+      ...(duration >= 300 && duration <= 600 ? [] : [{ field: "questionIds", code: "DURATION_OUT_OF_RANGE", message: "A set must take five to ten minutes." }]),
+      ...(objectives.size >= 1 && objectives.size <= 2 ? [] : [{ field: "questionIds", code: "PRIMARY_OBJECTIVES_INVALID", message: "A set must have one or two distinct primary objectives." }]),
+    ];
+    if (findings.length) throw new ContentError("VALIDATION_FAILED", "Check the named validation findings.", findings);
+    const setId = await repository.createPracticeSetDraft({ title: valid.title, questions, actorId: actor.id }, tx);
+    await repository.recordPracticeSetAudit("PRACTICE_SET_DRAFT_CREATED", setId, actor.id, tx);
+    return setId;
+  });
+}
+export async function submitPracticeSetForReview(actor: Actor, input: { practiceSetId: string }) {
+  staff(actor);
+  const valid = parse(practiceSetWorkflowSchema, input);
+  return database.transaction(async (tx) => {
+    const set = await repository.lockPracticeSet(valid.practiceSetId, tx);
+    if (!set) throw new ContentError("PRACTICE_SET_NOT_FOUND", "The practice set was not found.");
+    if (set.status !== "draft") throw new ContentError("CONTENT_TRANSITION_CONFLICT", "Only draft practice sets can be submitted for review.");
+    await repository.recordPracticeSetReview(set.id, actor.id, "submitted", [], tx);
+    await repository.updatePracticeSetStatus(set.id, "in_review", tx);
+    await repository.recordPracticeSetAudit("PRACTICE_SET_SUBMITTED", set.id, actor.id, tx);
+  });
+}
+export async function approvePracticeSet(actor: Actor, input: { practiceSetId: string }) {
+  staff(actor);
+  const valid = parse(practiceSetWorkflowSchema, input);
+  return database.transaction(async (tx) => {
+    const set = await repository.lockPracticeSet(valid.practiceSetId, tx);
+    if (!set) throw new ContentError("PRACTICE_SET_NOT_FOUND", "The practice set was not found.");
+    if (set.status !== "in_review") throw new ContentError("CONTENT_TRANSITION_CONFLICT", "Only practice sets in review can be approved.");
+    if (await repository.hasPracticeSetReviewByActor(set.id, actor.id, "submitted", tx)) throw new ContentError("PRACTICE_SET_SELF_APPROVAL_FORBIDDEN", "The submitting staff member cannot approve this practice set.");
+    await repository.recordPracticeSetReview(set.id, actor.id, "approved", [], tx);
+    await repository.updatePracticeSetStatus(set.id, "approved", tx);
+    await repository.recordPracticeSetAudit("PRACTICE_SET_APPROVED", set.id, actor.id, tx);
+  });
+}
+export async function publishPracticeSet(
+  actor: Actor,
+  input: { practiceSetId: string } | ComposePracticeSetInput,
+) {
+  staff(actor);
+  if ("questionIds" in input)
+    throw new ContentError("CONTENT_TRANSITION_CONFLICT", "Create a draft, submit it for review, approve it, then publish it.");
+  const lifecycle = parse(practiceSetWorkflowSchema, input);
+  return database.transaction(async (tx) => {
+    const set = await repository.lockPracticeSet(lifecycle.practiceSetId, tx);
+    if (!set) throw new ContentError("PRACTICE_SET_NOT_FOUND", "The practice set was not found.");
+    if (set.status !== "approved") throw new ContentError("CONTENT_TRANSITION_CONFLICT", "Only approved practice sets can be published.");
+    await repository.beginPracticeSetPublication(set.id, tx);
+    const questions = await repository.lockPracticeSetQuestions(set.id, tx);
+    const questionIds = questions.map((question) => question.id);
+    const valid = { title: set.title, questionIds };
     const entries = await repository.lockQuestionMediaEntries(valid.questionIds, tx);
     const media = entries.map((entry) => entry.media);
     const findings: ContentFindings = [];
@@ -861,9 +919,11 @@ export async function publishPracticeSet(
         mediaByQuestion,
         actorId: actor.id,
         title: valid.title,
+        practiceSetId: set.id,
       },
       tx,
     );
+    await repository.updatePracticeSetStatus(set.id, "published", tx);
     await repository.recordPracticeSetAudit(
       "PRACTICE_SET_PUBLISHED",
       setId,
@@ -880,7 +940,7 @@ export async function retirePracticeSet(
   staff(actor);
   const valid = parse(practiceSetWorkflowSchema, input);
   return database.transaction(async (tx) => {
-    const set = await repository.getPracticeSet(valid.practiceSetId, tx);
+    const set = await repository.lockPracticeSet(valid.practiceSetId, tx);
     if (!set)
       throw new ContentError(
         "PRACTICE_SET_NOT_FOUND",

@@ -19,3 +19,12 @@
  - source_spec: none
    summary: Split content application and repository concerns by lifecycle use case after functional remediation.
    evidence: Split from Epic 2 retrospective remediation because maintainability refactoring should follow the correctness fixes it is intended to protect.
+- source_spec: none
+  summary: Partition content-readiness proof by published topic and task type, including correct vocabulary and grammar target categorisation.
+  evidence: Split from the Epic 2 retrospective action items because it is independently shippable from the practice-set content lifecycle.
+- source_spec: none
+  summary: Add database-backed integration coverage from staff publication through learner selection and submission, preserving evidence after retirement.
+  evidence: Split from the Epic 2 retrospective action items because it can be reviewed and merged independently after lifecycle behaviour is established.
+- source_spec: none
+  summary: Separate content application and repository concerns by lifecycle use case after the blocking lifecycle fixes are complete.
+  evidence: Split from the Epic 2 retrospective action items because it is a follow-up internal refactor rather than required lifecycle behaviour.

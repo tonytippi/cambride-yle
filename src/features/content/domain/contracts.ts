@@ -99,7 +99,7 @@ export const reasonInputSchema = workflowInputSchema.extend({ reason: plainText(
 export const phonePreviewInputSchema = workflowInputSchema.extend({ viewportWidth: z.literal(375), successful: z.literal(true) }).strict();
 export const composePracticeSetSchema = z.object({
   title: plainText(120),
-  questionIds: z.array(id).min(1).max(20),
+  questionIds: z.array(id).min(1).max(20).superRefine((ids, context) => { if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "QUESTION_IDS_DUPLICATE" }); }),
 }).strict();
 export const practiceSetWorkflowSchema = z.object({ practiceSetId: id }).strict();
 export type WorkflowInput = z.infer<typeof workflowInputSchema>;

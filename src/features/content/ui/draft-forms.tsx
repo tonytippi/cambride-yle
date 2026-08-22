@@ -453,13 +453,13 @@ export function PracticeSetComposer({
 }) {
   return (
     <Form
-      title="Publish practice set"
-      pendingLabel="Publishing practice set..."
+      title="Create practice-set draft"
+      pendingLabel="Creating practice-set draft..."
       action={action}
     >
       <p>
-        Use published versions only. Sets must total five to ten minutes and
-        have one paper/part and one or two objectives.
+        Choose source question versions. Publication requires published sources,
+        one paper/part, five to ten minutes and one or two objectives.
       </p>
       <label>
         Learner-facing title
@@ -506,4 +506,9 @@ export function PracticeSetRetireControl({
       </p>
     </Form>
   );
+}
+export function PracticeSetWorkflowControls({ practiceSetId, status, submitAction, approveAction, publishAction, retireAction }: { practiceSetId: string; status: "draft" | "in_review" | "approved" | "published" | "retired"; submitAction: Action; approveAction: Action; publishAction: Action; retireAction: Action }) {
+  const action = status === "draft" ? submitAction : status === "in_review" ? approveAction : status === "approved" ? publishAction : status === "published" ? retireAction : undefined;
+  const title = status === "draft" ? "Submit practice set for review" : status === "in_review" ? "Approve practice set" : status === "approved" ? "Publish practice set" : "Retire practice set";
+  return action ? <Form title={title} pendingLabel={`${title}...`} action={action}><input type="hidden" name="practiceSetId" value={practiceSetId} /></Form> : <p>This immutable practice set has been retired.</p>;
 }

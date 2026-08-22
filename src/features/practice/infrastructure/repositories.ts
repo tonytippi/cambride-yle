@@ -71,7 +71,7 @@ export async function recordRecommendation(learnerId: string, version: string, d
   await db.insert(practiceRecommendationAudits).values({ id: uuidv7(), learnerId, version, displayedSetIds });
 }
 
-type Snapshot = { set: { id: string; title: string; status: "published" | "retired" }; items: { engine: LearnerEngine }[]; media: { id: string; mediaType: string; objectVersion: string; contentHash: string }[] };
+type Snapshot = { set: { id: string; title: string; status: "draft" | "in_review" | "approved" | "published" | "retired" }; items: { engine: LearnerEngine }[]; media: { id: string; mediaType: string; objectVersion: string; contentHash: string }[] };
 type SnapshotResult = Snapshot | { error: "SET_NOT_FOUND" | "SET_RETIRED" };
 async function publishedSnapshot(setId: string, db: Database): Promise<SnapshotResult> {
   const set = (await db.select({ id: practiceSets.id, title: practiceSets.title, status: practiceSets.status }).from(practiceSets).where(eq(practiceSets.id, setId)).limit(1))[0];

@@ -13,7 +13,7 @@ import {
   ContentDraftForms,
   ContentWorkflowControls,
   PracticeSetComposer,
-  PracticeSetRetireControl,
+  PracticeSetWorkflowControls,
 } from "@/features/content/ui/draft-forms";
 import { ReadinessReport } from "@/features/content/ui/readiness-report";
 import { serverConfig } from "@/shared/config/server";
@@ -27,11 +27,14 @@ import {
   createTargetAction,
   phonePreviewAction,
   publishContentAction,
+  approvePracticeSetAction,
+  createPracticeSetDraftAction,
   publishPracticeSetAction,
   rejectContentAction,
   requestAiDraftAction,
   retireContentAction,
   retirePracticeSetAction,
+  submitPracticeSetForReviewAction,
   submitForReviewAction,
   updateGuidanceAction,
   updateTargetAction,
@@ -194,9 +197,9 @@ export default async function AcademicLeadHome() {
           policies={catalogue.policies}
           media={drafts.media}
         />
-        <h2>Published practice-set composer</h2>
+        <h2>Practice-set draft composer</h2>
         <PracticeSetComposer
-          action={publishPracticeSetAction}
+          action={createPracticeSetDraftAction}
           questions={publishedQuestions}
           media={publishedMedia}
         />
@@ -213,12 +216,11 @@ export default async function AcademicLeadHome() {
                 {set.estimatedDurationSeconds} seconds ·{" "}
                 {(set.primaryTargetIds as string[]).length} primary objective(s)
               </p>
-              {set.status === "published" && (
-                <PracticeSetRetireControl
-                  practiceSetId={set.id}
-                  action={retirePracticeSetAction}
-                />
-              )}
+              <ul className="audit-history" aria-label="Practice-set review and audit history">
+                {drafts.setReviews.filter((record) => record.practiceSetId === set.id).map((record) => <li key={record.id}>Review: {record.decision}, {record.createdAt.toISOString()}</li>)}
+                {drafts.setAudits.filter((record) => record.practiceSetId === set.id).map((record) => <li key={record.id}>{record.action.replaceAll("_", " ")}, {record.createdAt.toISOString()}</li>)}
+              </ul>
+              <PracticeSetWorkflowControls practiceSetId={set.id} status={set.status} submitAction={submitPracticeSetForReviewAction} approveAction={approvePracticeSetAction} publishAction={publishPracticeSetAction} retireAction={retirePracticeSetAction} />
             </article>
           ))}
         </div>

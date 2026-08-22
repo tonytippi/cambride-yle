@@ -109,6 +109,18 @@ describe("migration baseline", () => {
       "db/migrations/0026_content_history_trigger_fix.sql",
       "utf8",
     );
+    const practiceSetLifecycleMigration = await readFile(
+      "db/migrations/0027_practice_set_lifecycle.sql",
+      "utf8",
+    );
+    const practiceSetGuardMigration = await readFile(
+      "db/migrations/0028_practice_set_publication_snapshot_guard.sql",
+      "utf8",
+    );
+    const practiceSetHardeningMigration = await readFile(
+      "db/migrations/0029_practice_set_lifecycle_hardening.sql",
+      "utf8",
+    );
     expect(journal).toContain("0000_initial_baseline");
     expect(migration).toContain("Initial reviewed baseline");
     expect(journal).toContain("0001_identity");
@@ -292,6 +304,16 @@ describe("migration baseline", () => {
     expect(compositionTriggerFixMigration).toContain("to_jsonb(NEW)->>'practice_set_item_id'");
     expect(journal).toContain("0026_content_history_trigger_fix");
     expect(historyTriggerFixMigration).toContain("prevent_content_history_mutation");
+    expect(journal).toContain("0027_practice_set_lifecycle");
+    expect(practiceSetLifecycleMigration).toContain('CREATE TABLE "practice_set_compositions"');
+    expect(practiceSetLifecycleMigration).toContain('CREATE TABLE "practice_set_review_records"');
+    expect(journal).toContain("0028_practice_set_publication_snapshot_guard");
+    expect(practiceSetGuardMigration).toContain("practice_set_compositions_draft_only");
+    expect(journal).toContain("0029_practice_set_lifecycle_hardening");
+    expect(practiceSetHardeningMigration).toContain("PRACTICE_SET_REVIEW_EVIDENCE_REQUIRED");
+    expect(practiceSetHardeningMigration).toContain("PRACTICE_SET_APPROVAL_EVIDENCE_REQUIRED");
+    expect(practiceSetHardeningMigration).toContain("PRACTICE_SET_PUBLICATION_TRANSACTION_REQUIRED");
+    expect(practiceSetHardeningMigration).toContain("app.practice_set_publication_id");
   });
 
   it("enforces canonical email uniqueness in the migrated database", async () => {
@@ -374,6 +396,40 @@ describe("migration baseline", () => {
           )
             throw error;
         });
+    } finally {
+      await sql.end();
+    }
+  });
+  it("enforces practice-set lifecycle evidence and immutable records in the migrated database", async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+    try {
+      const tables = await sql<{ table_name: string }[]>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('practice_sets', 'practice_set_compositions', 'practice_set_review_records', 'practice_set_audit_events')`;
+      if (tables.length !== 4) return;
+      await sql.begin(async (transaction) => {
+        const suffix = crypto.randomUUID();
+        const submitterId = crypto.randomUUID();
+        const approverId = crypto.randomUUID();
+        const setId = crypto.randomUUID();
+        await transaction`INSERT INTO accounts (id, email, canonical_email, display_name, role) VALUES (${submitterId}, ${`set-submitter-${suffix}@example.test`}, ${`set-submitter-${suffix}@example.test`}, 'Submitter', 'academic_lead'), (${approverId}, ${`set-approver-${suffix}@example.test`}, ${`set-approver-${suffix}@example.test`}, 'Approver', 'admin')`;
+        await transaction`INSERT INTO practice_sets (id, status, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${setId}, 'draft', 'Lifecycle set', 'reading_writing', '1', 300, '[]'::jsonb, ${submitterId})`;
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO practice_sets (id, status, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${crypto.randomUUID()}, 'published', 'Invalid initial set', 'reading_writing', '1', 300, '[]'::jsonb, ${submitterId})`)).rejects.toThrow(/PRACTICE_SET_INITIAL_STATUS_INVALID/);
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'in_review' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_REVIEW_EVIDENCE_REQUIRED/);
+        const submittedId = crypto.randomUUID();
+        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${submittedId}, ${setId}, ${submitterId}, 'submitted', '[]'::jsonb)`;
+        await transaction`UPDATE practice_sets SET status = 'in_review' WHERE id = ${setId}`;
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'approved', title = 'Changed' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_METADATA_IMMUTABLE/);
+        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${crypto.randomUUID()}, ${setId}, ${submitterId}, 'approved', '[]'::jsonb)`;
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'approved' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_APPROVAL_EVIDENCE_REQUIRED/);
+        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${crypto.randomUUID()}, ${setId}, ${approverId}, 'approved', '[]'::jsonb)`;
+        await transaction`UPDATE practice_sets SET status = 'approved' WHERE id = ${setId}`;
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'published' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_PUBLICATION_TRANSACTION_REQUIRED/);
+        await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO practice_set_compositions (id, practice_set_id, question_version_id, position) VALUES (${crypto.randomUUID()}, ${setId}, ${crypto.randomUUID()}, 1)`)).rejects.toThrow(/PRACTICE_SET_COMPOSITION_IMMUTABLE/);
+        await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_set_review_records SET decision = 'changed' WHERE id = ${submittedId}`)).rejects.toThrow(/PRACTICE_SET_SNAPSHOT_IMMUTABLE/);
+        const auditId = crypto.randomUUID();
+        await transaction`INSERT INTO practice_set_audit_events (id, actor_id, action, practice_set_id) VALUES (${auditId}, ${submitterId}, 'PRACTICE_SET_SUBMITTED', ${setId})`;
+        await expect(transaction.savepoint((savepoint) => savepoint`DELETE FROM practice_set_audit_events WHERE id = ${auditId}`)).rejects.toThrow(/PRACTICE_SET_SNAPSHOT_IMMUTABLE/);
+        throw new Error("ROLLBACK_TEST_TRANSACTION");
+      }).catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "ROLLBACK_TEST_TRANSACTION") throw error; });
     } finally {
       await sql.end();
     }

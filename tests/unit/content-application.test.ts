@@ -15,6 +15,13 @@ const dependencies = vi.hoisted(() => ({
   lockQuestionMediaEntries: vi.fn(),
   getReadinessCandidates: vi.fn(),
   createPublishedPracticeSet: vi.fn(),
+  createPracticeSetDraft: vi.fn(),
+  lockPracticeSet: vi.fn(),
+  lockPracticeSetQuestions: vi.fn(),
+  recordPracticeSetReview: vi.fn(),
+  hasPracticeSetReviewByActor: vi.fn(),
+  updatePracticeSetStatus: vi.fn(),
+  beginPracticeSetPublication: vi.fn(),
   getPracticeSet: vi.fn(),
   retirePracticeSet: vi.fn(),
   getControlledReferences: vi.fn(),
@@ -56,6 +63,9 @@ import {
   getContentReadiness,
   publishContent,
   publishPracticeSet,
+  createPracticeSetDraft,
+  submitPracticeSetForReview,
+  approvePracticeSet,
   recordPhonePreview,
   rejectContent,
   requestAiDraft,
@@ -916,7 +926,7 @@ describe("content draft use cases", () => {
       { transaction: "boundary" },
     );
   });
-  it("blocks invalid composition before a practice set is materialised", async () => {
+  it("creates a valid draft and requires the lifecycle before publication", async () => {
     dependencies.getQuestions.mockResolvedValue([
       {
         ...input,
@@ -926,90 +936,89 @@ describe("content draft use cases", () => {
         estimatedDurationSeconds: "60",
       },
     ]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
-    await expect(
-      publishPracticeSet(lead, {
-        title: "Animal picture practice",
-        questionIds: ["018f0000-0000-7000-8000-000000000009"],
-      }),
-    ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
-      findings: expect.arrayContaining([
-        expect.objectContaining({ code: "DURATION_OUT_OF_RANGE" }),
-      ]),
-    });
-    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+    dependencies.createPracticeSetDraft.mockResolvedValue("018f0000-0000-7000-8000-000000000014");
+    await expect(createPracticeSetDraft(lead, { title: "Animal picture practice", questionIds: ["018f0000-0000-7000-8000-000000000009"] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(publishPracticeSet(lead, { title: "Animal picture practice", questionIds: ["018f0000-0000-7000-8000-000000000009"] })).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
   });
-  it("requires a concise learner-facing title before materialising a set", async () => {
-    await expect(publishPracticeSet(lead, { title: "", questionIds: ["018f0000-0000-7000-8000-000000000009"] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
-    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  it("rejects non-published source versions before writing a draft composition", async () => {
+    dependencies.getQuestions.mockResolvedValue([{ ...input, id: "018f0000-0000-7000-8000-000000000009", status: "approved", part: "1", estimatedDurationSeconds: "300" }]);
+    await expect(createPracticeSetDraft(lead, { title: "Animal picture practice", questionIds: ["018f0000-0000-7000-8000-000000000009"] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "QUESTION_NOT_PUBLISHED" })]) });
+    expect(dependencies.createPracticeSetDraft).not.toHaveBeenCalled();
   });
-  it("returns stored-association audio findings without materialising a set", async () => {
+  it("rejects duplicate question IDs before writing a draft composition", async () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
-    dependencies.getQuestions.mockResolvedValue([
-      {
-        ...input,
-        id: questionId,
-        status: "published",
-        engine: "audio_picture_choice",
-        part: "1",
-        estimatedDurationSeconds: "300",
-      },
-    ]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
-    await expect(
-      publishPracticeSet(lead, {
-        title: "Animal picture practice",
-        questionIds: [questionId],
-      }),
-    ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
-      findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]),
-    });
+    await expect(createPracticeSetDraft(lead, { title: "Animal picture practice", questionIds: [questionId, questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ message: "QUESTION_IDS_DUPLICATE" })]) });
+    expect(dependencies.createPracticeSetDraft).not.toHaveBeenCalled();
+  });
+  it("records review and approval evidence and rejects self-approval", async () => {
+    const set = { id: "018f0000-0000-7000-8000-000000000009", status: "draft" };
+    dependencies.lockPracticeSet.mockResolvedValue(set);
+    await submitPracticeSetForReview(lead, { practiceSetId: set.id });
+    expect(dependencies.recordPracticeSetReview).toHaveBeenCalledWith(set.id, lead.id, "submitted", [], { transaction: "boundary" });
+    dependencies.lockPracticeSet.mockResolvedValue({ ...set, status: "in_review" });
+    dependencies.hasPracticeSetReviewByActor.mockResolvedValue(true);
+    await expect(approvePracticeSet(lead, { practiceSetId: set.id })).rejects.toMatchObject({ code: "PRACTICE_SET_SELF_APPROVAL_FORBIDDEN" });
+  });
+  it.each([
+    ["draft", approvePracticeSet, "recordPracticeSetReview"],
+    ["approved", submitPracticeSetForReview, "recordPracticeSetReview"],
+    ["in_review", publishPracticeSet, "createPublishedPracticeSet"],
+    ["approved", async (actor: typeof lead, value: { practiceSetId: string }) => (await import("@/features/content/application/content")).retirePracticeSet(actor, value), "retirePracticeSet"],
+  ] as const)("rejects %s source state with no mutation", async (status, action, mutation) => {
+    const setId = "018f0000-0000-7000-8000-000000000009";
+    dependencies.lockPracticeSet.mockResolvedValue({ id: setId, status, title: "Practice" });
+    await expect(action(lead, { practiceSetId: setId } as never)).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
+    expect(dependencies[mutation]).not.toHaveBeenCalled();
+    expect(dependencies.recordPracticeSetAudit).not.toHaveBeenCalled();
+  });
+  it("rejects direct publication without materialising a set", async () => {
+    const questionId = "018f0000-0000-7000-8000-000000000009";
+    await expect(publishPracticeSet(lead, { title: "Animal picture practice", questionIds: [questionId] })).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
     expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
   });
-  it("revalidates published question references and picture labels against the answer policy", async () => {
+  it("rejects a direct publication request before source validation", async () => {
     const questionId = "018f0000-0000-7000-8000-000000000009";
-    dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_picture_choice", part: "1", estimatedDurationSeconds: "300" }]);
+    await expect(publishPracticeSet(lead, { title: "Audio picture practice", questionIds: [questionId] })).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
+  it("does not accept a direct publication request for an audio set", async () => {
+    const questionId = "018f0000-0000-7000-8000-000000000009";
+    await expect(publishPracticeSet(lead, { title: "Animal audio practice", questionIds: [questionId] })).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
+  it("does not publish a valid-looking set outside the lifecycle", async () => {
+    const questionId = "018f0000-0000-7000-8000-000000000009";
+    await expect(publishPracticeSet(lead, { title: "Animal picture practice", questionIds: [questionId] })).rejects.toMatchObject({ code: "CONTENT_TRANSITION_CONFLICT" });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
+  it("revalidates an approved set before snapshot materialisation", async () => {
+    const setId = "018f0000-0000-7000-8000-000000000009";
+    const question = { ...input, id: "018f0000-0000-7000-8000-000000000010", status: "published", part: "1", estimatedDurationSeconds: "300", engine: "audio_note_taking" };
+    dependencies.lockPracticeSet.mockResolvedValue({ id: setId, title: "Animal audio practice", status: "approved" });
+    dependencies.lockPracticeSetQuestions.mockResolvedValue([question]);
+    dependencies.lockQuestions.mockResolvedValue([question]);
+    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
+    await expect(publishPracticeSet(lead, { practiceSetId: setId })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
+    expect(dependencies.beginPracticeSetPublication).toHaveBeenCalledWith(setId, { transaction: "boundary" });
+    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
+  });
+  it("preserves saved composition order through final publication", async () => {
+    const setId = "018f0000-0000-7000-8000-000000000009";
+    const first = { ...input, id: "018f0000-0000-7000-8000-000000000010", status: "published", part: "1", estimatedDurationSeconds: "300" };
+    const second = { ...input, id: "018f0000-0000-7000-8000-000000000011", status: "published", part: "1", estimatedDurationSeconds: "300" };
+    dependencies.lockPracticeSet.mockResolvedValue({ id: setId, title: "Animal practice", status: "approved" });
+    dependencies.lockPracticeSetQuestions.mockResolvedValue([second, first]);
     dependencies.lockQuestionMediaEntries.mockResolvedValue([
-      { questionVersionId: questionId, media: { id: "audio", paper: input.paper, part: "1", engine: "audio_picture_choice", status: "published", mediaType: "audio", accessibilityMetadata: { altText: "Audio" } } },
-      { questionVersionId: questionId, media: { id: "image", paper: input.paper, part: "1", engine: "audio_picture_choice", status: "published", mediaType: "image", accessibilityMetadata: { altText: "Bird", choiceLabel: "Bird" } } },
+      { questionVersionId: first.id, media: { id: "image-one", paper: input.paper, part: "1", engine: input.engine, status: "published", mediaType: "image", accessibilityMetadata: { altText: "A cat" } } },
+      { questionVersionId: second.id, media: { id: "image-two", paper: input.paper, part: "1", engine: input.engine, status: "published", mediaType: "image", accessibilityMetadata: { altText: "A cat" } } },
     ]);
-    dependencies.getControlledReferences.mockResolvedValue({ targets: [{ id: input.primaryTargetId, isApproved: true }, { id: input.topicIds[0], isApproved: true }], guidance: { paper: input.paper, part: input.part, engine: "audio_picture_choice", maxWords: 10, maxOptions: 2 }, policy: { policy: { targetId: input.primaryTargetId, guidanceId: input.guidanceId, paper: input.paper, part: input.part, engine: "audio_picture_choice" }, version: { inputKind: "choice", canonicalAnswer: "Cat", acceptedAnswers: [] } } });
-    await expect(publishPracticeSet(lead, { title: "Audio picture practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "CHOICE_LABEL_POLICY_MISMATCH" })]) });
-    dependencies.getControlledReferences.mockResolvedValue({ targets: [], guidance: { paper: input.paper, part: input.part, engine: "audio_picture_choice", maxWords: 10, maxOptions: 2 }, policy: { policy: { targetId: input.primaryTargetId, guidanceId: input.guidanceId, paper: input.paper, part: input.part, engine: "audio_picture_choice" }, version: { inputKind: "choice", canonicalAnswer: "Bird", acceptedAnswers: [] } } });
-    await expect(publishPracticeSet(lead, { title: "Audio picture practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "TARGET_NOT_CONTROLLED" })]) });
-    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
-  });
-  it("requires audio media even when an audio question has no mapping", async () => {
-    const questionId = "018f0000-0000-7000-8000-000000000009";
-    dependencies.getQuestions.mockResolvedValue([{ ...input, id: questionId, status: "published", engine: "audio_note_taking", part: "1", estimatedDurationSeconds: "300" }]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([]);
-    await expect(publishPracticeSet(lead, { title: "Animal audio practice", questionIds: [questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ code: "AUDIO_MEDIA_REQUIRED" })]) });
-    expect(dependencies.createPublishedPracticeSet).not.toHaveBeenCalled();
-  });
-  it("publishes a valid set and snapshots an optional post-submission hint", async () => {
-    const questionId = "018f0000-0000-7000-8000-000000000009";
-    const question = {
-      ...input,
-      id: questionId,
-      status: "published",
-      part: "1",
-      estimatedDurationSeconds: "300",
-      postSubmitHint: { locale: "en-GB", message: "Look carefully at the picture." },
-    };
-    dependencies.getQuestions.mockResolvedValue([question]);
-    dependencies.lockQuestionMediaEntries.mockResolvedValue([{ questionVersionId: questionId, media: { id: input.mediaIds[0], paper: input.paper, part: "1", engine: input.engine, status: "published", mediaType: "image", accessibilityMetadata: { altText: "A cat" } } }]);
-    dependencies.createPublishedPracticeSet.mockResolvedValue(
-      "018f0000-0000-7000-8000-000000000014",
-    );
-    await expect(publishPracticeSet(lead, { title: "Animal picture practice", questionIds: [questionId] })).resolves.toBe("018f0000-0000-7000-8000-000000000014");
-    expect(dependencies.createPublishedPracticeSet).toHaveBeenCalledWith(expect.objectContaining({ title: "Animal picture practice", questions: [question], actorId: lead.id }), { transaction: "boundary" });
-    expect(dependencies.lockQuestionMediaEntries).toHaveBeenCalledWith([questionId], { transaction: "boundary" });
-    expect(dependencies.recordPracticeSetAudit).toHaveBeenCalledWith("PRACTICE_SET_PUBLISHED", "018f0000-0000-7000-8000-000000000014", lead.id, { transaction: "boundary" });
+    dependencies.createPublishedPracticeSet.mockResolvedValue(setId);
+    await publishPracticeSet(lead, { practiceSetId: setId });
+    expect(dependencies.createPublishedPracticeSet).toHaveBeenCalledWith(expect.objectContaining({ questions: [second, first] }), { transaction: "boundary" });
+    expect(dependencies.lockQuestions).not.toHaveBeenCalled();
   });
   it("uses dedicated practice-set audit evidence on retirement", async () => {
-    dependencies.getPracticeSet.mockResolvedValue({
+    dependencies.lockPracticeSet.mockResolvedValue({
       id: "018f0000-0000-7000-8000-000000000009",
       status: "published",
     });

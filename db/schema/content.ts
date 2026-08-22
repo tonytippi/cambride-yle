@@ -218,6 +218,9 @@ export const contentPhonePreviewRecords = pgTable(
 );
 
 export const practiceSetStatus = pgEnum("practice_set_status", [
+  "draft",
+  "in_review",
+  "approved",
   "published",
   "retired",
 ]);
@@ -225,7 +228,7 @@ export const practiceSets = pgTable(
   "practice_sets",
   {
     id: uuid("id").primaryKey(),
-    status: practiceSetStatus("status").notNull().default("published"),
+    status: practiceSetStatus("status").notNull().default("draft"),
     title: text("title").notNull(),
     paper: curriculumPaper("paper").notNull(),
     part: text("part").notNull(),
@@ -266,6 +269,33 @@ export const practiceSetAuditEvents = pgTable(
   (table) => [
     index("practice_set_audit_events_set_idx").on(table.practiceSetId),
   ],
+);
+
+export const practiceSetCompositions = pgTable(
+  "practice_set_compositions",
+  {
+    id: uuid("id").primaryKey(),
+    practiceSetId: uuid("practice_set_id").notNull().references(() => practiceSets.id),
+    questionVersionId: uuid("question_version_id").notNull().references(() => questionDrafts.id),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    unique("practice_set_compositions_position_unique").on(table.practiceSetId, table.position),
+    unique("practice_set_compositions_question_unique").on(table.practiceSetId, table.questionVersionId),
+  ],
+);
+
+export const practiceSetReviewRecords = pgTable(
+  "practice_set_review_records",
+  {
+    id: uuid("id").primaryKey(),
+    practiceSetId: uuid("practice_set_id").notNull().references(() => practiceSets.id),
+    actorId: uuid("actor_id").notNull().references(() => accounts.id),
+    decision: text("decision").notNull(),
+    findings: jsonb("findings").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("practice_set_review_records_set_idx").on(table.practiceSetId)],
 );
 
 export const practiceSetItems = pgTable(

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   answerPolicies,
   answerPolicyVersions,
@@ -11,6 +11,8 @@ import {
   curriculumTargets,
   mediaDrafts,
   practiceSetAuditEvents,
+  practiceSetCompositions,
+  practiceSetReviewRecords,
   practiceSetItemMedia,
   practiceSetItems,
   practiceSets,
@@ -114,6 +116,8 @@ export async function listDrafts(db: Database = database) {
       .select()
       .from(practiceSets)
       .orderBy(desc(practiceSets.createdAt)),
+    setAudits: await db.select().from(practiceSetAuditEvents).orderBy(desc(practiceSetAuditEvents.createdAt)),
+    setReviews: await db.select().from(practiceSetReviewRecords).orderBy(desc(practiceSetReviewRecords.createdAt)),
     generations: await db.select().from(contentGenerationRecords),
     validations: await db
       .select()
@@ -419,6 +423,37 @@ export async function recordPracticeSetAudit(
     .insert(practiceSetAuditEvents)
     .values({ id: uuidv7(), actorId, action, practiceSetId });
 }
+export async function createPracticeSetDraft(input: { title: string; questions: Awaited<ReturnType<typeof getQuestions>>; actorId: string }, db: Database) {
+  const id = uuidv7();
+  const questions = input.questions;
+  await db.insert(practiceSets).values({ id, status: "draft", title: input.title, paper: questions[0]!.paper, part: questions[0]!.part, estimatedDurationSeconds: questions.reduce((total, question) => total + Number(question.estimatedDurationSeconds), 0), primaryTargetIds: [...new Set(questions.map((question) => question.primaryTargetId))], createdBy: input.actorId });
+  await db.insert(practiceSetCompositions).values(questions.map((question, index) => ({ id: uuidv7(), practiceSetId: id, questionVersionId: question.id, position: index + 1 })));
+  return id;
+}
+export async function lockPracticeSet(id: string, db: Database) {
+  return (await db.select().from(practiceSets).where(eq(practiceSets.id, id)).for("update").limit(1))[0];
+}
+export async function lockPracticeSetQuestions(id: string, db: Database) {
+  const composition = await db.select().from(practiceSetCompositions).where(eq(practiceSetCompositions.practiceSetId, id)).orderBy(asc(practiceSetCompositions.position)).for("update");
+  const questions = await lockQuestions(composition.map((entry) => entry.questionVersionId), db);
+  const questionsById = new Map(questions.map((question) => [question.id, question]));
+  return composition.flatMap((entry) => {
+    const question = questionsById.get(entry.questionVersionId);
+    return question ? [question] : [];
+  });
+}
+export async function beginPracticeSetPublication(id: string, db: Database) {
+  await db.execute(sql`SELECT set_config('app.practice_set_publication_id', ${id}, true)`);
+}
+export async function recordPracticeSetReview(practiceSetId: string, actorId: string, decision: "submitted" | "approved", findings: unknown, db: Database) {
+  await db.insert(practiceSetReviewRecords).values({ id: uuidv7(), practiceSetId, actorId, decision, findings });
+}
+export async function hasPracticeSetReviewByActor(practiceSetId: string, actorId: string, decision: "submitted", db: Database) {
+  return Boolean((await db.select({ id: practiceSetReviewRecords.id }).from(practiceSetReviewRecords).where(and(eq(practiceSetReviewRecords.practiceSetId, practiceSetId), eq(practiceSetReviewRecords.actorId, actorId), eq(practiceSetReviewRecords.decision, decision))).limit(1))[0]);
+}
+export async function updatePracticeSetStatus(id: string, status: "in_review" | "approved" | "published" | "retired", db: Database) {
+  await db.update(practiceSets).set({ status }).where(eq(practiceSets.id, id));
+}
 async function audit(
   action: string,
   kind: "question" | "media",
@@ -462,16 +497,17 @@ export async function createPublishedPracticeSet(
     mediaByQuestion: Map<string, Awaited<ReturnType<typeof getMediaVersions>>>;
     actorId: string;
     title: string;
+    practiceSetId?: string;
   },
   db: Database,
 ) {
-  const id = uuidv7();
+  const id = input.practiceSetId ?? uuidv7();
   const questions = input.questions;
   const duration = questions.reduce(
     (total, question) => total + Number(question.estimatedDurationSeconds),
     0,
   );
-  await db.insert(practiceSets).values({
+  if (!input.practiceSetId) await db.insert(practiceSets).values({
     id,
     title: input.title,
     paper: questions[0]!.paper,
