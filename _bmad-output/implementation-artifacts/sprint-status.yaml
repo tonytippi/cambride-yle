@@ -29,11 +29,11 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 08-21-2026 16:25
+last_updated: 08-21-2026 17:00
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
-story_location:
+story_location: 
   /home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts
 development_status:
   epic-1: done
@@ -63,9 +63,23 @@ development_status:
   4-1-view-centre-wide-evidence-and-actionable-gaps: done
   4-2-filter-and-drill-down-into-learner-evidence: done
   4-3-resolve-uncertain-item-outcomes: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   epic-5: backlog
   5-1-set-up-a-supervised-first-practice-session: backlog
   5-2-review-first-practice-evidence-and-deactivate-access: backlog
   epic-5-retrospective: optional
+action_items:
+  - id: "epic-4-retro-item-1-refactor-resolution-rebuild-to-preserve"
+    epic: 4
+    action: "Refactor resolution rebuild to preserve immutable attempt evidence and
+      add a PostgreSQL-backed repository transaction test."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-4-retro-08-21-2026.md"
+  - id: "epic-4-retro-item-2-add-academic-lead-admin-resolution-and-s"
+    epic: 4
+    action: "Add academic-lead/admin resolution and stale-conflict browser E2E coverage."
+    owner: "Development"
+    status: open
+    ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-4-retro-08-21-2026.md"
