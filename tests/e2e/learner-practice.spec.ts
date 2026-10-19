@@ -147,7 +147,7 @@ test("a typed note is included when the learner submits without leaving the fiel
     await page.getByLabel("Type the word, name or number you hear").fill("Tom");
     const reviewed = await submitAndReview(page);
     await expect(reviewed.nth(2)).toContainText("Your answer: Tom");
-    await expect(reviewed.nth(2)).toContainText("correct");
+    await expect(reviewed.nth(2)).toContainText("You got this one right.");
   } finally {
     await context.close();
   }

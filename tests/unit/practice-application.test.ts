@@ -126,8 +126,19 @@ describe("practice submission and review", () => {
     expect(dependencies.submitPracticeAttempt).toHaveBeenCalledWith(learner.id, input);
   });
   it("releases review data only through the submitted review contract", async () => {
-    dependencies.getSubmittedPracticeReview.mockResolvedValue({ attemptId: input.attemptId, setId: input.setId, submittedAt: new Date(), revision: 4, title: "Animals", items: [{ id: "018f0000-0000-7000-8000-000000000003", position: 1, response: "cat", outcome: "correct", approvedAnswer: "cat", evidenceLabel: "secure" }] });
-    await expect(getSubmittedPracticeReview(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ data: { items: [expect.objectContaining({ approvedAnswer: "cat", outcome: "correct" })] } });
+    const reviewItem = (position: number, outcome: string, targets = [{ id: "animals", label: "animals" }]) => ({ id: `item-${position}`, position, engine: "word_bank_cloze", prompt: "Choose cat.", targets, response: "cat", outcome, approvedAnswer: "cat", approvedAnswerLabel: "cat" });
+    dependencies.getSubmittedPracticeReview.mockResolvedValue({ attemptId: input.attemptId, setId: input.setId, submittedAt: new Date(), revision: 4, title: "Animals", paper: "reading_writing", part: "4", items: [
+      reviewItem(1, "correct"), reviewItem(2, "incorrect"), reviewItem(3, "incorrect"), reviewItem(4, "needs_teacher_review", [{ id: "plural-nouns", label: "plural-nouns" }]),
+    ] });
+    dependencies.getTargetLabels.mockResolvedValue([{ id: "animals", guidance: "Animal words", canonicalId: "animals" }]);
+    await expect(getSubmittedPracticeReview(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ data: {
+      items: [expect.objectContaining({ approvedAnswer: "cat", outcome: "correct" }), expect.anything(), expect.anything(), expect.anything()],
+      areas: [
+        { targetId: "animals", name: "Animal words · Reading and Writing Part 4", state: "needs practice" },
+        { targetId: "plural-nouns", name: "Plural nouns · Reading and Writing Part 4", state: "not assessed yet" },
+      ],
+    } });
+    expect(dependencies.getTargetLabels).toHaveBeenCalledWith(["animals", "plural-nouns"]);
     dependencies.getSubmittedPracticeReview.mockResolvedValue({ error: "ATTEMPT_FINALISED" });
     await expect(getSubmittedPracticeReview(learner, { setId: input.setId, attemptId: input.attemptId })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
   });

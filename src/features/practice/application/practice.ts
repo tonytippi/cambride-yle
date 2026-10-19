@@ -1,6 +1,6 @@
 import type { Actor } from "@/features/identity/domain/contracts";
 import { z } from "zod";
-import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, submitAttemptSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedPracticeResult, type SubmittedPracticeReview } from "../domain/contracts";
+import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, submitAttemptSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type ReviewItemOutcome, type SubmittedPracticeResult, type SubmittedPracticeReview } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
 import { evidenceState, latestFactsPerSet } from "@/features/evidence/domain/evidence-state";
 import type { SubmittedEvidenceFact } from "./evidence-contract";
@@ -10,7 +10,7 @@ const recommendationVersion = "learner-home-v2";
 const paperNames = { listening: "Listening", reading_writing: "Reading and Writing" } as const;
 /* Child-facing practice area: short controlled guidance text, else the readable canonical id, with its paper and part. */
 const practiceAreaLabel = (target: { guidance: string; canonicalId: string } | undefined, paper: keyof typeof paperNames, part: string) => {
-  const name = target && target.guidance.trim().length <= 60 ? target.guidance.trim() : target ? target.canonicalId.replace(/-/g, " ").replace(/^./, (first) => first.toLocaleUpperCase("en-GB")) : "Recent practice";
+  const name = target?.guidance.trim() && target.guidance.trim().length <= 60 ? target.guidance.trim() : target ? target.canonicalId.replace(/-/g, " ").replace(/^./, (first) => first.toLocaleUpperCase("en-GB")) : "Recent practice";
   return `${name} · ${paperNames[paper]} Part ${part}`;
 };
 
@@ -149,5 +149,15 @@ export async function getSubmittedPracticeReview(actor: Actor, input: unknown): 
   const parsed = practiceAttemptSchema.safeParse(input);
   if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
   const result = await repository.getSubmittedPracticeReview(actor.id, parsed.data.setId, parsed.data.attemptId);
-  return "error" in result ? { error: { code: result.error, message: playerMessages[result.error] } } : { data: result };
+  if ("error" in result) return { error: { code: result.error, message: playerMessages[result.error] } };
+  const groups = new Map<string, { automaticOutcome: ReviewItemOutcome }[]>();
+  const snapshotLabels = new Map<string, string>();
+  for (const item of result.items)
+    for (const target of item.targets) {
+      groups.set(target.id, [...(groups.get(target.id) ?? []), { automaticOutcome: item.outcome }]);
+      snapshotLabels.set(target.id, target.label);
+    }
+  const labels = new Map((await repository.getTargetLabels([...groups.keys()])).map((target) => [target.id, target]));
+  const areas = [...groups].map(([targetId, outcomes]) => ({ targetId, name: practiceAreaLabel(labels.get(targetId) ?? { guidance: "", canonicalId: snapshotLabels.get(targetId) ?? "" }, result.paper, result.part), state: evidenceState(outcomes).state }));
+  return { data: { ...result, areas } };
 }

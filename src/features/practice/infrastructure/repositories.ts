@@ -21,7 +21,7 @@ import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import { authoriseMedia, isMediaGatewayConfigured } from "./media-gateway";
 import { normaliseChoiceLabel } from "@/features/content/domain/contracts";
-import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
+import type { LearnerEngine, ReviewItemOutcome, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
 import type { SubmittedEvidenceDetail, SubmittedEvidenceFact, SubmittedEvidenceFilter, SubmittedEvidenceReader } from "../application/evidence-contract";
 
 type Database = typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
@@ -331,11 +331,16 @@ export async function appendTeacherEvidenceResolution(input: { reviewItemId: str
   });
 }
 
-export async function getSubmittedPracticeReview(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<SubmittedPracticeReview | { error: "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" }> {
+export async function getSubmittedPracticeReview(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<Omit<SubmittedPracticeReview, "areas"> | { error: "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" }> {
   const attempt = (await db.select({ id: practiceAttempts.id, setId: practiceAttempts.practiceSetId, revision: practiceAttempts.revision, submittedAt: practiceAttempts.submittedAt, status: practiceAttempts.status, title: practiceAttempts.submittedTitle, expectedReviewItemCount: practiceAttempts.expectedReviewItemCount, reviewSnapshotItems: practiceAttempts.reviewSnapshotItems, presentation: practiceAttempts.submittedPresentation, timing: practiceAttempts.finalTiming, playback: practiceAttempts.playbackSnapshot }).from(practiceAttempts).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
   if (!attempt || attempt.setId !== setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
   if (attempt.status !== "submitted" || !attempt.submittedAt || !attempt.title || !attempt.presentation || !attempt.timing || !attempt.playback || !attempt.expectedReviewItemCount || !attempt.reviewSnapshotItems) return { error: "ATTEMPT_FINALISED" };
   const items = await db.select().from(practiceAttemptReviewItems).where(eq(practiceAttemptReviewItems.attemptId, attemptId)).orderBy(practiceAttemptReviewItems.position);
   if (items.length !== attempt.expectedReviewItemCount || JSON.stringify(items.map((item) => ({ id: item.practiceSetItemId, position: item.position }))) !== JSON.stringify(attempt.reviewSnapshotItems) || items.some((item) => !item.presentation || !item.approvedAnswerLabel)) return { error: "ATTEMPT_FINALISED" };
-  return { attemptId, setId, submittedAt: attempt.submittedAt, revision: attempt.revision, title: attempt.title, items: items.map((item) => ({ id: item.practiceSetItemId, position: item.position, response: item.response as string | boolean | number | null, responseLabel: item.responseLabel ?? undefined, outcome: item.outcome as SubmittedPracticeReview["items"][number]["outcome"], approvedAnswer: item.approvedAnswer as string | boolean | number, approvedAnswerLabel: item.approvedAnswerLabel, explanation: item.explanation ?? undefined, evidenceLabel: item.evidenceLabel })) };
+  const presentation = attempt.presentation as { paper: "listening" | "reading_writing"; part: string };
+  return { attemptId, setId, submittedAt: attempt.submittedAt, revision: attempt.revision, title: attempt.title, paper: presentation.paper, part: presentation.part, items: items.map((item) => {
+    const shown = item.presentation as { engine: LearnerEngine; prompt: string };
+    const targets = ((item.curriculumTags as { evidenceTargets?: { id: string; label: string }[] } | null)?.evidenceTargets ?? []);
+    return { id: item.practiceSetItemId, position: item.position, engine: shown.engine, prompt: shown.prompt, targets, response: item.response as string | boolean | number | null, responseLabel: item.responseLabel ?? undefined, outcome: item.outcome as ReviewItemOutcome, approvedAnswer: item.approvedAnswer as string | boolean | number, approvedAnswerLabel: item.approvedAnswerLabel, explanation: item.explanation ?? undefined };
+  }) };
 }
