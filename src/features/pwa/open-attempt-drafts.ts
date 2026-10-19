@@ -97,3 +97,8 @@ export function sameIdentityDraft(draft: unknown, accountId: string, attemptId: 
 export function shouldApplyDraftHydration(hydrationEpoch: number, currentEditEpoch: number) {
   return hydrationEpoch === currentEditEpoch;
 }
+
+/* Recovered or offline answers the server has not confirmed; unanswered (undefined) and null are equivalent. */
+export function unsyncedResponses(server: Record<string, DraftResponse | undefined>, local: Record<string, DraftResponse>) {
+  return Object.entries(local).filter(([itemId, value]) => itemId in server && (server[itemId] ?? null) !== value);
+}

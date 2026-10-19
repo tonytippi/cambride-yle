@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { cacheNamespace, cacheableMedia, cacheableRequest, isNamespacedKey, mediaCacheKey, mediaCacheName, namespacedDraftKey } from "@/features/pwa/cache-policy";
-import { createOpenAttemptDraft, draftResponses, shouldApplyDraftHydration, usableDraft, validDraft } from "@/features/pwa/open-attempt-drafts";
+import { createOpenAttemptDraft, draftResponses, shouldApplyDraftHydration, unsyncedResponses, usableDraft, validDraft } from "@/features/pwa/open-attempt-drafts";
 import { attemptMediaSchema } from "@/features/practice/domain/contracts";
 
 describe("PWA cache policy", () => {
@@ -59,5 +59,8 @@ describe("PWA cache policy", () => {
     expect(worker).toContain("return response;");
     expect(fixture).toContain("url.pathname === \"/api/practice/media\"");
     expect(fixture).toContain("!url.pathname.startsWith(\"/api/\")");
+  });
+  it("identifies recovered answers the server has not confirmed", () => {
+    expect(unsyncedResponses({ a: undefined, b: true, c: "cat", d: undefined }, { a: "dog", b: true, c: "fish", d: null, gone: "x" })).toEqual([["a", "dog"], ["c", "fish"]]);
   });
 });
