@@ -39,6 +39,7 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
     targetIds: row.targetIds as string[],
     submittedAttemptId: row.submittedAttemptId,
     action: (row.openLastSavedAt ? "Resume" : row.submittedAttemptId ? "Review" : "Start") as LearnerPracticeSet["action"],
+    openAttemptId: row.openLastSavedAt ? row.openAttemptId : null,
     lastSavedAt: row.openLastSavedAt ?? undefined,
   }));
   const filters = { topic: valid.topic || undefined, taskType: valid.taskType || undefined, topics: [...new Set(allSets.map((set) => set.topic))], taskTypes: [...new Set(allSets.map((set) => set.taskType))] };
@@ -64,6 +65,7 @@ const preparationMessages = {
   MEDIA_UNAVAILABLE: "Essential media is not available. Please retry or choose another activity.",
   MEDIA_AUTHORISATION_FAILED: "Essential media is not available. Please retry or choose another activity.",
   ESSENTIAL_MEDIA_MISSING: "This practice activity is missing essential media.",
+  RESTART_TARGET_INVALID: "This practice has changed. Go back to your practice list and try again.",
 } as const;
 
 function learnerOnly(actor: Actor) {
@@ -85,8 +87,8 @@ export async function startPractice(actor: Actor, input: unknown): Promise<Pract
   if (denied) return denied;
   const parsed = startPracticeSchema.safeParse(input);
   if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
-  const { setId } = parsed.data;
-  const result = await repository.startPublishedPractice(actor.id, setId);
+  const { setId, replaceAttemptId } = parsed.data;
+  const result = await repository.startPublishedPractice(actor.id, setId, replaceAttemptId);
   return "error" in result ? { error: { code: result.error, message: preparationMessages[result.error] } } : { data: result };
 }
 

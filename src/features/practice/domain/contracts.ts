@@ -15,6 +15,7 @@ export type LearnerPracticeSet = {
   action: LearnerPracticeAction;
   lastSavedAt?: Date;
   submittedAttemptId?: string | null;
+  openAttemptId?: string | null;
 };
 export type LearnerHome = {
   allSets: LearnerPracticeSet[];
@@ -26,7 +27,8 @@ export const learnerHomeFilterSchema = z.object({ topic: z.string().trim().max(1
 
 export const practiceSetIdSchema = z.string().uuid();
 export const preparePracticeSchema = z.object({ setId: practiceSetIdSchema }).strict();
-export const startPracticeSchema = z.object({ setId: practiceSetIdSchema }).strict();
+/* replaceAttemptId starts again: the named open attempt is retained as abandoned and a new attempt begins. */
+export const startPracticeSchema = z.object({ setId: practiceSetIdSchema, replaceAttemptId: z.string().uuid().optional() }).strict();
 export type PreparationAsset = { id: string; type: "audio" | "image"; url: string; cacheKey: string };
 export type PracticePreparation = { setId: string; setVersionId: string; title: string; assets: PreparationAsset[] };
 export type PracticeStart = { attemptId: string; setId: string; setVersionId: string; revision: number; disposition: "started" | "resume" };
@@ -43,5 +45,5 @@ export const submitAttemptSchema = practiceAttemptSchema.extend({ expectedRevisi
 export const attemptMediaSchema = practiceAttemptSchema.extend({ mediaId: z.string().uuid(), setVersionId: z.string().uuid(), mediaKey: z.string().min(1).max(300) }).strict();
 export type SubmittedPracticeResult = { attemptId: string; setId: string; submittedAt: Date; revision: number };
 export type SubmittedPracticeReview = SubmittedPracticeResult & { title: string; items: { id: string; position: number; response: string | boolean | number | null; responseLabel?: string; outcome: "correct" | "incorrect" | "unanswered" | "needs_teacher_review"; approvedAnswer: string | boolean | number; approvedAnswerLabel: string; explanation?: string; evidenceLabel: EvidenceLabel }[] };
-export type PracticeErrorCode = "FORBIDDEN" | "INPUT_INVALID" | "SET_NOT_FOUND" | "SET_RETIRED" | "OPEN_ATTEMPT_EXISTS" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" | "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_REVISION_CONFLICT" | "ATTEMPT_FINALISED" | "ITEM_INVALID";
+export type PracticeErrorCode = "FORBIDDEN" | "INPUT_INVALID" | "SET_NOT_FOUND" | "SET_RETIRED" | "OPEN_ATTEMPT_EXISTS" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" | "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_REVISION_CONFLICT" | "ATTEMPT_FINALISED" | "ITEM_INVALID" | "RESTART_TARGET_INVALID";
 export type PracticeResult<T> = { data: T } | { error: { code: PracticeErrorCode; message: string } };

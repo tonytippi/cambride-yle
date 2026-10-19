@@ -38,6 +38,7 @@ export async function listPublishedSetsForLearner(learnerId: string, db: Databas
       topic: curriculumGuidance.topic,
       taskType: curriculumGuidance.taskFormat,
       openLastSavedAt: practiceAttempts.lastSavedAt,
+      openAttemptId: practiceAttempts.id,
       submittedAttemptId: sql<string | null>`(select id from practice_attempts submitted_attempt where submitted_attempt.learner_id = ${learnerId} and submitted_attempt.practice_set_id = ${practiceSets.id} and submitted_attempt.status = 'submitted' order by submitted_attempt.submitted_at desc, submitted_attempt.id desc limit 1)`,
     })
     .from(practiceSets)
@@ -80,30 +81,48 @@ export async function preparePublishedPractice(learnerId: string, setId: string,
   return { setId: snapshot.set.id, setVersionId: snapshot.set.id, title: snapshot.set.title, assets: assets.filter((asset): asset is PracticePreparation["assets"][number] => !!asset) };
 }
 
-export async function startPublishedPractice(learnerId: string, setId: string): Promise<PracticeStart | { error: "SET_NOT_FOUND" | "SET_RETIRED" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" }> {
-  return database.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${learnerId}), hashtext(${setId}))`);
-    const existing = (await tx.select({ id: practiceAttempts.id, practiceSetVersionId: practiceAttempts.practiceSetVersionId, revision: practiceAttempts.revision }).from(practiceAttempts).where(and(eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.practiceSetId, setId), eq(practiceAttempts.status, "open"))).limit(1))[0];
-    if (existing) return { attemptId: existing.id, setId, setVersionId: existing.practiceSetVersionId, revision: existing.revision, disposition: "resume" };
-    // Prevent retirement from committing between the readiness check and attempt insert.
-    await tx.execute(sql`SELECT id FROM practice_sets WHERE id = ${setId} FOR UPDATE`);
-    const snapshot = await publishedSnapshot(setId, tx);
-    if ("error" in snapshot) return snapshot;
-    if (!snapshot.media.length && snapshot.items.some((item) => item.engine !== "word_bank_cloze")) return { error: "ESSENTIAL_MEDIA_MISSING" };
-    if (!snapshot.media.length) {
-      const id = uuidv7();
-      await tx.insert(practiceAttempts).values({ id, learnerId, practiceSetId: setId, practiceSetVersionId: setId, revision: 0 });
-      return { attemptId: id, setId, setVersionId: setId, revision: 0, disposition: "started" };
-    }
-    if (!isMediaGatewayConfigured()) return { error: "MEDIA_AUTHORISATION_FAILED" };
-    for (const media of snapshot.media) {
-      if (media.mediaType !== "audio" && media.mediaType !== "image") return { error: "MEDIA_UNAVAILABLE" };
-      if (!await authoriseMedia(learnerId, media)) return { error: "MEDIA_UNAVAILABLE" };
-    }
+type StartResult = PracticeStart | { error: "SET_NOT_FOUND" | "SET_RETIRED" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" };
+/* Raised to roll back a start-again whose replacement attempt cannot begin. */
+class StartAbort extends Error { constructor(readonly result: Exclude<StartResult, PracticeStart>) { super(result.error); } }
+
+async function beginAttempt(tx: Parameters<Parameters<typeof database.transaction>[0]>[0], learnerId: string, setId: string): Promise<StartResult> {
+  // Prevent retirement from committing between the readiness check and attempt insert.
+  await tx.execute(sql`SELECT id FROM practice_sets WHERE id = ${setId} FOR UPDATE`);
+  const snapshot = await publishedSnapshot(setId, tx);
+  if ("error" in snapshot) return snapshot;
+  if (!snapshot.media.length && snapshot.items.some((item) => item.engine !== "word_bank_cloze")) return { error: "ESSENTIAL_MEDIA_MISSING" };
+  if (!snapshot.media.length) {
     const id = uuidv7();
     await tx.insert(practiceAttempts).values({ id, learnerId, practiceSetId: setId, practiceSetVersionId: setId, revision: 0 });
     return { attemptId: id, setId, setVersionId: setId, revision: 0, disposition: "started" };
-  });
+  }
+  if (!isMediaGatewayConfigured()) return { error: "MEDIA_AUTHORISATION_FAILED" };
+  for (const media of snapshot.media) {
+    if (media.mediaType !== "audio" && media.mediaType !== "image") return { error: "MEDIA_UNAVAILABLE" };
+    if (!await authoriseMedia(learnerId, media)) return { error: "MEDIA_UNAVAILABLE" };
+  }
+  const id = uuidv7();
+  await tx.insert(practiceAttempts).values({ id, learnerId, practiceSetId: setId, practiceSetVersionId: setId, revision: 0 });
+  return { attemptId: id, setId, setVersionId: setId, revision: 0, disposition: "started" };
+}
+
+export async function startPublishedPractice(learnerId: string, setId: string, replaceAttemptId?: string): Promise<PracticeStart | { error: "SET_NOT_FOUND" | "SET_RETIRED" | "ESSENTIAL_MEDIA_MISSING" | "MEDIA_UNAVAILABLE" | "MEDIA_AUTHORISATION_FAILED" | "RESTART_TARGET_INVALID" }> {
+  try {
+    return await database.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${learnerId}), hashtext(${setId}))`);
+      const existing = (await tx.select({ id: practiceAttempts.id, practiceSetVersionId: practiceAttempts.practiceSetVersionId, revision: practiceAttempts.revision }).from(practiceAttempts).where(and(eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.practiceSetId, setId), eq(practiceAttempts.status, "open"))).limit(1))[0];
+      if (!replaceAttemptId) return existing ? { attemptId: existing.id, setId, setVersionId: existing.practiceSetVersionId, revision: existing.revision, disposition: "resume" as const } : beginAttempt(tx, learnerId, setId);
+      if (existing?.id !== replaceAttemptId) return { error: "RESTART_TARGET_INVALID" as const };
+      await tx.update(practiceAttempts).set({ status: "abandoned", abandonedAt: new Date() }).where(and(eq(practiceAttempts.id, existing.id), eq(practiceAttempts.status, "open")));
+      const started = await beginAttempt(tx, learnerId, setId);
+      // Keep the open attempt when no replacement can begin.
+      if ("error" in started) throw new StartAbort(started);
+      return started;
+    });
+  } catch (error) {
+    if (error instanceof StartAbort) return error.result;
+    throw error;
+  }
 }
 
 export async function getOpenPracticeAttempt(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<OpenPracticeAttempt | undefined> {

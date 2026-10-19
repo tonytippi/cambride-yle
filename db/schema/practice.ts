@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { accounts } from "./identity";
 import { practiceSetItemMedia, practiceSetItems, practiceSets } from "./content";
 
-export const practiceAttemptStatus = pgEnum("practice_attempt_status", ["open", "submitted"]);
+export const practiceAttemptStatus = pgEnum("practice_attempt_status", ["open", "submitted", "abandoned"]);
 export const practiceEvidenceLabel = pgEnum("practice_evidence_label", ["secure", "building", "needs_practice", "not_assessed_yet"]);
 
 export const practiceAttempts = pgTable("practice_attempts", {
@@ -28,6 +28,7 @@ export const practiceAttempts = pgTable("practice_attempts", {
   status: practiceAttemptStatus("status").notNull().default("open"),
   lastSavedAt: timestamp("last_saved_at", { withTimezone: true }).notNull().defaultNow(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  abandonedAt: timestamp("abandoned_at", { withTimezone: true }),
   finalisationKey: uuid("finalisation_key"),
   submittedTitle: text("submitted_title"),
   submittedPresentation: jsonb("submitted_presentation"),
@@ -37,7 +38,7 @@ export const practiceAttempts = pgTable("practice_attempts", {
   playbackSnapshot: jsonb("playback_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  check("practice_attempts_lifecycle_check", sql`((${table.status} = 'open' AND ${table.submittedAt} IS NULL) OR (${table.status} = 'submitted' AND ${table.submittedAt} IS NOT NULL)) AND ${table.lastSavedAt} >= ${table.createdAt} AND (${table.submittedAt} IS NULL OR ${table.submittedAt} >= ${table.createdAt}) AND ${table.practiceSetVersionId} = ${table.practiceSetId} AND ${table.revision} >= 0`),
+  check("practice_attempts_lifecycle_check", sql`((((${table.status})::text = 'open' OR (${table.status})::text = 'abandoned') AND ${table.submittedAt} IS NULL) OR ((${table.status})::text = 'submitted' AND ${table.submittedAt} IS NOT NULL)) AND (((${table.status})::text = 'abandoned') = (${table.abandonedAt} IS NOT NULL)) AND ${table.lastSavedAt} >= ${table.createdAt} AND (${table.submittedAt} IS NULL OR ${table.submittedAt} >= ${table.createdAt}) AND (${table.abandonedAt} IS NULL OR ${table.abandonedAt} >= ${table.createdAt}) AND ${table.practiceSetVersionId} = ${table.practiceSetId} AND ${table.revision} >= 0`),
   index("practice_attempts_learner_set_idx").on(table.learnerId, table.practiceSetId, table.status),
   unique("practice_attempts_id_set_unique").on(table.id, table.practiceSetId),
   unique("practice_attempts_id_learner_set_unique").on(table.id, table.learnerId, table.practiceSetId),

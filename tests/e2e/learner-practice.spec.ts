@@ -4,8 +4,8 @@ import postgres from "postgres";
 import { approveSeededSet, e2eDatabaseUrl, publishSeededSet, resetE2eSchema } from "./e2e-database";
 
 const id = () => crypto.randomUUID();
-const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() } };
-const learners = { reconnect: id(), reload: id(), unblurred: id() };
+const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() } };
+const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id() };
 const tokens = Object.fromEntries(Object.keys(learners).map((key) => [key, id()])) as Record<keyof typeof learners, string>;
 const policy = (canonicalAnswer: string | boolean, inputKind: string) => ({ canonicalAnswer, acceptedAnswers: [], inputKind, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId: fixture.policyId, version: 1 });
 
@@ -38,6 +38,17 @@ test.beforeAll(async () => {
         await tx`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES
           (${id()}, ${fixture.items.picture}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
           (${id()}, ${fixture.items.notes}, ${fixture.mediaId}, 'audio', 'owned-e2e-image.png', 'owned-e2e-audio', '{"altText":"A child says the cat is called Tom"}'::jsonb, ${provenance})`;
+      });
+      // A set without audio, so the browser preparation step can complete for repeat-practice journeys.
+      await tx`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${fixture.wordsSetId}, 'Pet words', 'reading_writing', '1', 300, ${JSON.stringify([fixture.targetId])}::jsonb, ${fixture.staffId})`;
+      await approveSeededSet(tx, fixture.wordsSetId, fixture.staffId, fixture.approverId);
+      await publishSeededSet(tx, fixture.wordsSetId, async () => {
+        const tags = tx.json({ primaryTargetId: fixture.targetId, guidanceId: fixture.guidanceId });
+        const provenance = tx.json({ source: "Original", rightsReference: "Owned" });
+        await tx`INSERT INTO practice_set_items (id, practice_set_id, position, question_version_id, engine, rendered_prompt, rendered_options, answer_policy, feedback, tags, accessibility_metadata, provenance) VALUES
+          (${fixture.wordItems.picture}, ${fixture.wordsSetId}, 1, ${fixture.questionId}, 'picture_true_false', 'The cat is on the mat.', '["True","False"]'::jsonb, ${tx.json(policy(true, "boolean"))}, '{}'::jsonb, ${tags}, '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
+          (${fixture.wordItems.cloze}, ${fixture.wordsSetId}, 2, ${fixture.questionId}, 'word_bank_cloze', 'I have a pet ____. It says miaow.', '["cat","dog","fish"]'::jsonb, ${tx.json(policy("cat", "word"))}, '{}'::jsonb, ${tags}, '{"altText":"Word bank"}'::jsonb, ${provenance})`;
+        await tx`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES (${id()}, ${fixture.wordItems.picture}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat on a mat"}'::jsonb, ${provenance})`;
       });
     });
   } finally {
@@ -137,6 +148,51 @@ test("a typed note is included when the learner submits without leaving the fiel
     const reviewed = await submitAndReview(page);
     await expect(reviewed.nth(2)).toContainText("Your answer: Tom");
     await expect(reviewed.nth(2)).toContainText("correct");
+  } finally {
+    await context.close();
+  }
+});
+
+test("a learner practises a completed set again and can start an open attempt again while keeping submitted work", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.addCookies([{ name: "cambridgeyle_session", value: tokens.repeat, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+  const page = await context.newPage();
+  const card = () => page.getByRole("region", { name: "Published practice activities" }).getByRole("article").filter({ hasText: "Pet words" });
+  const startFromPreparation = async (label: string) => {
+    await expect(button(page, label)).toBeEnabled();
+    await button(page, label).click();
+    await expect(page).toHaveURL(/\/attempt\/[^/]+$/);
+    return page.url();
+  };
+  try {
+    await page.goto("/learner");
+    await card().getByRole("link", { name: "Start" }).click();
+    const first = await startFromPreparation("Start");
+    await button(page, "True").click();
+    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+    const reviewed = await submitAndReview(page);
+    await expect(reviewed.nth(0)).toContainText("Your answer: True");
+    const reviewUrl = page.url();
+
+    await page.getByRole("link", { name: "Back to your practice" }).click();
+    await expect(card().getByRole("link", { name: "Review" })).toBeVisible();
+    await card().getByRole("link", { name: "Practise again" }).click();
+    const second = await startFromPreparation("Start");
+    expect(second).not.toBe(first);
+    await expect(button(page, "True")).not.toHaveClass(/selected/);
+    await button(page, "False").click();
+    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Save and leave" }).click();
+
+    await expect(card().getByRole("link", { name: "Resume" })).toBeVisible();
+    await card().getByRole("link", { name: "Start again" }).click();
+    await expect(page.getByText("Starting again clears the answers you saved in this practice. Practice you already submitted stays the same.")).toBeVisible();
+    const third = await startFromPreparation("Start again");
+    expect(third).not.toBe(second);
+    await expect(button(page, "False")).not.toHaveClass(/selected/);
+
+    await page.goto(reviewUrl);
+    await expect(page.locator("article.review-item").nth(0)).toContainText("Your answer: True");
   } finally {
     await context.close();
   }

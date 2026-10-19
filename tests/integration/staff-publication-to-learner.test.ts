@@ -114,6 +114,25 @@ describe("staff publication to learner evidence", () => {
       await expect(savePracticeResponse(submitter, { setId, attemptId: started.data.attemptId, itemId, expectedRevision: player.data.revision, value: true })).resolves.toEqual({ data: { revision: 1 } });
       await expect(submitPracticeAttempt(submitter, { setId, attemptId: started.data.attemptId, expectedRevision: 1, idempotencyKey: crypto.randomUUID() })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId } });
 
+      // The learner who submitted can practise the set again, then start that new attempt again.
+      await expect(getLearnerHome(submitter)).resolves.toMatchObject({ allSets: expect.arrayContaining([expect.objectContaining({ id: setId, action: "Review", submittedAttemptId: started.data.attemptId })]) });
+      const again = await startPractice(submitter, { setId });
+      if (!("data" in again)) throw new Error(`Practise again did not start: ${JSON.stringify(again)}`);
+      expect(again.data).toMatchObject({ disposition: "started", revision: 0 });
+      expect(again.data.attemptId).not.toBe(started.data.attemptId);
+      await expect(getLearnerHome(submitter)).resolves.toMatchObject({ allSets: expect.arrayContaining([expect.objectContaining({ id: setId, action: "Resume", openAttemptId: again.data.attemptId })]) });
+      await expect(startPractice(submitter, { setId, replaceAttemptId: started.data.attemptId })).resolves.toMatchObject({ error: { code: "RESTART_TARGET_INVALID" } });
+      const restarted = await startPractice(submitter, { setId, replaceAttemptId: again.data.attemptId });
+      if (!("data" in restarted)) throw new Error(`Start again failed: ${JSON.stringify(restarted)}`);
+      expect(restarted.data).toMatchObject({ disposition: "started", revision: 0 });
+      await expect(sql`SELECT id, status::text, abandoned_at IS NOT NULL AS abandoned FROM practice_attempts WHERE learner_id = ${ids.submitter} ORDER BY created_at, id`).resolves.toEqual([
+        { id: started.data.attemptId, status: "submitted", abandoned: false },
+        { id: again.data.attemptId, status: "abandoned", abandoned: true },
+        { id: restarted.data.attemptId, status: "open", abandoned: false },
+      ]);
+      await expect(sql`UPDATE practice_attempts SET status = 'open', abandoned_at = NULL WHERE id = ${again.data.attemptId}`).rejects.toThrow(/PRACTICE_ATTEMPT_IMMUTABLE/);
+      await expect(getPracticePlayer(submitter, { setId, attemptId: again.data.attemptId })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
+
       // A second learner leaves an attempt open before retirement.
       const open = await startPractice(openLearner, { setId });
       if (!("data" in open)) throw new Error(`Open practice did not start: ${JSON.stringify(open)}`);
@@ -133,6 +152,9 @@ describe("staff publication to learner evidence", () => {
 
       await expect(getLearnerHome(freshLearner)).resolves.toMatchObject({ allSets: expect.not.arrayContaining([expect.objectContaining({ id: setId })]) });
       await expect(startPractice(freshLearner, { setId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });
+      // Starting again cannot discard an open attempt when no new attempt can begin.
+      await expect(startPractice(openLearner, { setId, replaceAttemptId: open.data.attemptId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });
+      await expect(sql`SELECT status::text FROM practice_attempts WHERE id = ${open.data.attemptId}`).resolves.toEqual([{ status: "open" }]);
 
       // Completed evidence is unchanged for learner and teacher.
       await expect(getSubmittedPracticeReview(submitter, { setId, attemptId: started.data.attemptId })).resolves.toMatchObject({ data: { attemptId: started.data.attemptId, items: [expect.objectContaining({ outcome: "correct" })] } });
