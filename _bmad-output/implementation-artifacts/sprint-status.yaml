@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 10-19-2026 21:03
+last_updated: 10-19-2026 21:06
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
@@ -43,7 +43,7 @@ development_status:
   1-4-deactivate-a-centre-account: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
+  epic-2: done
   2-1-maintain-curriculum-targets-and-answer-policies: done
   2-2-create-manual-or-ai-content-drafts: done
   2-3-validate-review-and-phone-preview-content: done
@@ -153,7 +153,7 @@ action_items:
     action: "After the blocking fixes, split content application/repository concerns
       by lifecycle use case to keep cross-story invariants reviewable."
     owner: "Development"
-    status: open
+    status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
   - id: "epic-3-retro-item-13-make-open-attempt-answers-server-authori"
     epic: 3
