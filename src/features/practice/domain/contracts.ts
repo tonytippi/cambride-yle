@@ -16,6 +16,8 @@ export type LearnerPracticeSet = {
   lastSavedAt?: Date;
   submittedAttemptId?: string | null;
   openAttemptId?: string | null;
+  /* False for a retired set kept only so the learner can resume or review their own attempt. */
+  available: boolean;
 };
 export type LearnerHome = {
   allSets: LearnerPracticeSet[];

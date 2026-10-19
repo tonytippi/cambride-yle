@@ -39,13 +39,15 @@ export async function listPublishedSetsForLearner(learnerId: string, db: Databas
       taskType: curriculumGuidance.taskFormat,
       openLastSavedAt: practiceAttempts.lastSavedAt,
       openAttemptId: practiceAttempts.id,
+      available: sql<boolean>`${practiceSets.status} = 'published'`,
       submittedAttemptId: sql<string | null>`(select id from practice_attempts submitted_attempt where submitted_attempt.learner_id = ${learnerId} and submitted_attempt.practice_set_id = ${practiceSets.id} and submitted_attempt.status = 'submitted' order by submitted_attempt.submitted_at desc, submitted_attempt.id desc limit 1)`,
     })
     .from(practiceSets)
     .innerJoin(practiceSetItems, eq(practiceSetItems.practiceSetId, practiceSets.id))
     .innerJoin(curriculumGuidance, sql`${practiceSetItems.tags}->>'guidanceId' = ${curriculumGuidance.id}::text`)
     .leftJoin(practiceAttempts, and(eq(practiceAttempts.practiceSetId, practiceSets.id), eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.status, "open")))
-    .where(eq(practiceSets.status, "published"))
+    // Retired sets stay listed only while this learner has an open or submitted attempt to resume or review.
+    .where(sql`${practiceSets.status} = 'published' OR (${practiceSets.status} = 'retired' AND EXISTS (SELECT 1 FROM practice_attempts kept WHERE kept.learner_id = ${learnerId} AND kept.practice_set_id = ${practiceSets.id} AND kept.status IN ('open', 'submitted')))`)
     .orderBy(practiceSets.id, desc(practiceAttempts.lastSavedAt));
   return rows;
 }

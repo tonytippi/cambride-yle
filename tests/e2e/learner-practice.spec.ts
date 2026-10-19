@@ -193,6 +193,12 @@ test("a learner practises a completed set again and can start an open attempt ag
 
     await page.goto(reviewUrl);
     await expect(page.locator("article.review-item").nth(0)).toContainText("Your answer: True");
+
+    // Old player URLs lead somewhere useful: a submitted attempt opens its review, a replaced one returns home.
+    await page.goto(first);
+    await expect(page).toHaveURL(reviewUrl);
+    await page.goto(second);
+    await expect(page).toHaveURL(/\/learner$/);
   } finally {
     await context.close();
   }
@@ -224,6 +230,29 @@ test("the player announces question changes, exposes selected answers and states
     await expect(page.getByText("You answered 1 of 3 questions. 2 questions have no answer yet. When you submit, you can check your answers.")).toBeVisible();
     await button(page, "Review questions").click();
     await expect(page.getByRole("heading", { name: "Question 2 of 3" })).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
+test("a learner can still finish an open attempt after its set is retired", async ({ browser }) => {
+  const sql = postgres(e2eDatabaseUrl, { max: 1, prepare: false });
+  try { await sql`UPDATE practice_sets SET status = 'retired' WHERE id = ${fixture.wordsSetId}`; } finally { await sql.end(); }
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.addCookies([{ name: "cambridgeyle_session", value: tokens.repeat, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+  const page = await context.newPage();
+  try {
+    await page.goto("/learner");
+    const card = page.getByRole("region", { name: "Practice to choose" }).getByRole("article").filter({ hasText: "Pet words" });
+    await expect(card).toContainText("This practice can no longer be started. You can still finish or check your own work.");
+    await expect(card.getByRole("link", { name: "Start again" })).toHaveCount(0);
+    await expect(card.getByRole("link", { name: "Practise again" })).toHaveCount(0);
+    await card.getByRole("link", { name: "Resume" }).click();
+    await expect(page).toHaveURL(/\/attempt\/[^/]+$/);
+    await button(page, "True").click();
+    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+    const reviewed = await submitAndReview(page);
+    await expect(reviewed.nth(0)).toContainText("Your answer: True");
   } finally {
     await context.close();
   }

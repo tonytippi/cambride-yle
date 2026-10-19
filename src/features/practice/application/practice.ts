@@ -40,18 +40,19 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
     submittedAttemptId: row.submittedAttemptId,
     action: (row.openLastSavedAt ? "Resume" : row.submittedAttemptId ? "Review" : "Start") as LearnerPracticeSet["action"],
     openAttemptId: row.openLastSavedAt ? row.openAttemptId : null,
+    available: row.available,
     lastSavedAt: row.openLastSavedAt ?? undefined,
   }));
   const filters = { topic: valid.topic || undefined, taskType: valid.taskType || undefined, topics: [...new Set(allSets.map((set) => set.topic))], taskTypes: [...new Set(allSets.map((set) => set.taskType))] };
   const sets = allSets.filter((set) => (!filters.topic || set.topic === filters.topic) && (!filters.taskType || set.taskType === filters.taskType));
   const areas = await practiceAreas(actor.id);
   const focus = areas[0];
-  if (!focus || !allSets.length) return { allSets, sets, filters, recommendation: undefined };
+  if (!focus || !allSets.some((set) => set.available)) return { allSets, sets, filters, recommendation: undefined };
   const rank = (set: LearnerPracticeSet) => {
     const matching = areas.filter((area) => area.paper === set.paper && area.part === set.part && set.targetIds.includes(area.targetId));
     return matching.some((area) => area.state === "needs practice") ? 0 : matching.length ? 1 : 2;
   };
-  const ranked = [...allSets].sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, "en-GB")).slice(0, 3);
+  const ranked = allSets.filter((set) => set.available).sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, "en-GB")).slice(0, 3);
   const [target] = await repository.getTargetLabels([focus.targetId]);
   const recommendation = { version: recommendationVersion, setIds: ranked.map((set) => set.id), practiceArea: practiceAreaLabel(target, focus.paper, focus.part) };
   await repository.recordRecommendation(actor.id, recommendation.version, recommendation.setIds);

@@ -7,7 +7,7 @@ import { getLearnerHome, getPracticePlayer, getSubmittedPracticeReview, prepareP
 const learner = { id: "018f0000-0000-7000-8000-000000000001", role: "learner" as const, email: "learner@example.test", displayName: "Learner" };
 const fact = (practiceSetId: string, languageTargetId: string, outcome: "correct" | "incorrect" | "unanswered" | "needs_teacher_review", attemptId = `${practiceSetId}-latest`, submittedAt = new Date()) => ({ attemptId, learnerId: learner.id, learnerName: "Learner", practiceSetId, paper: "listening" as const, part: "1", languageTargetId, languageTarget: languageTargetId, automaticOutcome: outcome, effectiveOutcome: outcome, resolutionRevision: 0, submittedAt, dimensions: {} });
 const facts = (practiceSetId: string, languageTargetId: string, outcomes: ("correct" | "incorrect" | "unanswered" | "needs_teacher_review")[], attemptId?: string, submittedAt?: Date) => outcomes.map((outcome) => fact(practiceSetId, languageTargetId, outcome, attemptId, submittedAt));
-const row = (id: string, openLastSavedAt: Date | null = null, submittedAttemptId: string | null = null) => ({ id, title: `Set ${id}`, paper: "listening" as const, part: "1", estimatedDurationSeconds: 300, targetIds: ["animals"], topic: "Animals", taskType: "Picture choice", openLastSavedAt, submittedAttemptId });
+const row = (id: string, openLastSavedAt: Date | null = null, submittedAttemptId: string | null = null) => ({ id, title: `Set ${id}`, paper: "listening" as const, part: "1", estimatedDurationSeconds: 300, targetIds: ["animals"], topic: "Animals", taskType: "Picture choice", openLastSavedAt, submittedAttemptId, openAttemptId: openLastSavedAt ? `open-${id}` : null, available: true });
 
 describe("learner practice home", () => {
   beforeEach(() => { vi.clearAllMocks(); dependencies.listPublishedSetsForLearner.mockResolvedValue([]); dependencies.listLearnerEvidenceFacts.mockResolvedValue([]); dependencies.getTargetLabels.mockResolvedValue([]); });
@@ -56,6 +56,13 @@ describe("learner practice home", () => {
     expect(home.filters).toEqual({ topic: "School", taskType: "Note taking", topics: ["Animals", "School", "Food"], taskTypes: ["Picture choice", "Note taking", "Word bank"] });
     expect(home.recommendation).toMatchObject({ setIds: ["animals", "school", "food"] });
     expect(dependencies.recordRecommendation).toHaveBeenCalledWith(learner.id, "learner-home-v2", ["animals", "school", "food"]);
+  });
+  it("lists a retired set kept for the learner's own attempt but never recommends it", async () => {
+    dependencies.listPublishedSetsForLearner.mockResolvedValue([{ ...row("retired", new Date()), available: false }, { ...row("open-set"), title: "Z set" }]);
+    dependencies.listLearnerEvidenceFacts.mockResolvedValue(facts("retired", "animals", ["incorrect", "incorrect", "incorrect"]));
+    const home = await getLearnerHome(learner);
+    expect(home.allSets).toEqual(expect.arrayContaining([expect.objectContaining({ id: "retired", available: false, action: "Resume", openAttemptId: "open-retired" })]));
+    expect(home.recommendation?.setIds).toEqual(["open-set"]);
   });
   it("rejects notice from the application boundary so it cannot influence learner-home data", async () => {
     await expect(getLearnerHome(learner, { notice: "Not a filter" } as never)).rejects.toBeInstanceOf(Error);

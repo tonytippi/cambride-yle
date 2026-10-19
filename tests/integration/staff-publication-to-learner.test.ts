@@ -151,6 +151,8 @@ describe("staff publication to learner evidence", () => {
       await retireContent(admin, media);
 
       await expect(getLearnerHome(freshLearner)).resolves.toMatchObject({ allSets: expect.not.arrayContaining([expect.objectContaining({ id: setId })]) });
+      // Learners with their own kept attempts still see the retired set, but only to resume or review it.
+      await expect(getLearnerHome(openLearner)).resolves.toMatchObject({ allSets: expect.arrayContaining([expect.objectContaining({ id: setId, available: false, action: "Resume", openAttemptId: open.data.attemptId })]) });
       await expect(startPractice(freshLearner, { setId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });
       // Starting again cannot discard an open attempt when no new attempt can begin.
       await expect(startPractice(openLearner, { setId, replaceAttemptId: open.data.attemptId })).resolves.toMatchObject({ error: { code: "SET_RETIRED" } });

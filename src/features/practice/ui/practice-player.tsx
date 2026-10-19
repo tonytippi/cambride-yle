@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createOpenAttemptDraft, openAttemptDraftStore, sameIdentityDraft, shouldApplyDraftHydration, type DraftResponse, unsyncedResponses, usableDraft } from "@/features/pwa/open-attempt-drafts";
 import { namespacedDraftKey } from "@/features/pwa/cache-policy";
@@ -16,12 +16,16 @@ function responses(player: PracticePlayerData): Record<string, DraftResponse> {
   return Object.fromEntries(player.items.filter((item) => item.response !== undefined).map((item) => [item.id, item.response ?? null]));
 }
 
+const subscribeNothing = () => () => undefined;
+
 export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const router = useRouter();
   const [player, setPlayer] = useState(initialPlayer);
   const [position, setPosition] = useState(0);
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // False for the server render and hydration, so a tap before the page is interactive is visibly unavailable rather than lost.
+  const interactive = useSyncExternalStore(subscribeNothing, () => true, () => false);
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
   const online = () => typeof navigator !== "undefined" && navigator.onLine;
   /* Starts as online to match the server render; the mount effect reads the real connection state. */
@@ -191,7 +195,7 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const audio = item.media.filter((media) => media.type === "audio");
   const promptId = `prompt-${item.id}`;
   const hintId = `hint-${item.id}`;
-  const choice = (value: string | boolean, label: string) => <button key={String(value)} type="button" aria-pressed={visibleResponse === value} className={`choice ${visibleResponse === value ? "selected" : ""}`} disabled={submitting || stale} onClick={() => void save(value)}>{visibleResponse === value && <span className="choice-mark" aria-hidden="true">✓ </span>}{label}</button>;
+  const choice = (value: string | boolean, label: string) => <button key={String(value)} type="button" aria-pressed={visibleResponse === value} className={`choice ${visibleResponse === value ? "selected" : ""}`} disabled={!interactive || submitting || stale} onClick={() => void save(value)}>{visibleResponse === value && <span className="choice-mark" aria-hidden="true">✓ </span>}{label}</button>;
   const recoveryMessage: Record<PracticeRecoveryState, string> = { online: "Your answers save as you go.", saved: "Your answers save as you go.", offline: "No internet right now. Your answers stay on this device.", unsaved: "This device cannot keep a copy of your answers. Please keep this page open.", stale: "This practice changed on another device." };
   const answeredCount = player.items.filter((entry) => entry.response !== undefined).length;
   const unansweredCount = player.items.length - answeredCount;
@@ -203,14 +207,14 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     {stale && <div className="recovery-actions"><button type="button" className="secondary" onClick={() => void reload()}>Load latest</button><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Leave</a></div>}
     <p className="question-prompt" id={promptId}>{item.prompt}</p>
     {item.engine !== "audio_picture_choice" && pictures.length > 0 && <div className="picture-stimuli">{pictures.map((media) => <img key={media.id} src={mediaUrl(media)} alt={media.altText} />)}</div>}
-    {audio.length > 0 && <div className="audio-controls">{audio.map((media, index) => <span key={media.id}><audio ref={(element) => { if (element) audioRefs.current.set(media.id, element); else audioRefs.current.delete(media.id); }} preload="metadata" src={mediaUrl(media)} /><button type="button" className="secondary replay" disabled={submitting || stale} onClick={() => void replay(media.id)}>{played.has(media.id) ? "Play again" : "Play the sound"}{audio.length > 1 ? ` ${index + 1}` : ""}</button></span>)}</div>}
+    {audio.length > 0 && <div className="audio-controls">{audio.map((media, index) => <span key={media.id}><audio ref={(element) => { if (element) audioRefs.current.set(media.id, element); else audioRefs.current.delete(media.id); }} preload="metadata" src={mediaUrl(media)} /><button type="button" className="secondary replay" disabled={!interactive || submitting || stale} onClick={() => void replay(media.id)}>{played.has(media.id) ? "Play again" : "Play the sound"}{audio.length > 1 ? ` ${index + 1}` : ""}</button></span>)}</div>}
     {item.engine === "picture_true_false" && <div className="choice-row" role="group" aria-labelledby={promptId}>{choice(true, "True")}{choice(false, "False")}</div>}
     {item.engine === "picture_yes_no" && <div className="choice-row" role="group" aria-labelledby={promptId}>{choice("yes", "Yes")}{choice("no", "No")}</div>}
-    {item.engine === "audio_picture_choice" && <div className="picture-choices" role="group" aria-labelledby={promptId}>{pictures.map((media) => <button type="button" aria-pressed={visibleResponse === media.choiceLabel} className={`picture-choice ${visibleResponse === media.choiceLabel ? "selected" : ""}`} key={media.id} aria-label={media.choiceLabel} disabled={submitting || stale} onClick={() => void save(media.choiceLabel!)}><img src={mediaUrl(media)} alt={media.altText} />{visibleResponse === media.choiceLabel && <span className="choice-mark" aria-hidden="true">✓</span>}</button>)}</div>}
-    {item.engine === "audio_note_taking" && <><label className="answer-field">Your answer<input aria-describedby={hintId} value={typeof visibleResponse === "string" || typeof visibleResponse === "number" ? visibleResponse : ""} disabled={stale} onChange={(event) => setLocal(item.id, event.target.value || null)} onBlur={() => void flush()} /></label><p className="answer-hint" id={hintId}>{item.answerHint ?? "Write what you hear."}</p></>}
+    {item.engine === "audio_picture_choice" && <div className="picture-choices" role="group" aria-labelledby={promptId}>{pictures.map((media) => <button type="button" aria-pressed={visibleResponse === media.choiceLabel} className={`picture-choice ${visibleResponse === media.choiceLabel ? "selected" : ""}`} key={media.id} aria-label={media.choiceLabel} disabled={!interactive || submitting || stale} onClick={() => void save(media.choiceLabel!)}><img src={mediaUrl(media)} alt={media.altText} />{visibleResponse === media.choiceLabel && <span className="choice-mark" aria-hidden="true">✓</span>}</button>)}</div>}
+    {item.engine === "audio_note_taking" && <><label className="answer-field">Your answer<input aria-describedby={hintId} value={typeof visibleResponse === "string" || typeof visibleResponse === "number" ? visibleResponse : ""} disabled={!interactive || stale} onChange={(event) => setLocal(item.id, event.target.value || null)} onBlur={() => void flush()} /></label><p className="answer-hint" id={hintId}>{item.answerHint ?? "Write what you hear."}</p></>}
     {item.engine === "word_bank_cloze" && <><label className="answer-field">Your answer<input aria-describedby={hintId} value={typeof visibleResponse === "string" ? visibleResponse : ""} readOnly /></label><p className="answer-hint" id={hintId}>Tap a word from the box. You can change it before you finish.</p><div className="word-bank" role="group" aria-label="Word box">{item.options.map((option) => choice(option, option))}</div></>}
     <p role="status" aria-live="polite">{notice}</p>
-    {confirmingSubmit && <section className="submit-confirmation" aria-labelledby="submit-heading"><h2 id="submit-heading" ref={confirmationHeading} tabIndex={-1}>Ready to submit?</h2><p>{unansweredCount ? `You answered ${answeredCount} of ${player.items.length} questions. ${unansweredCount === 1 ? "1 question has" : `${unansweredCount} questions have`} no answer yet.` : `You answered all ${player.items.length} questions.`} When you submit, you can check your answers.</p><button type="button" className="secondary" onClick={reviewQuestions}>Review questions</button><button type="button" disabled={submitting || stale} onClick={() => void submit()}>{unansweredCount ? "Submit anyway" : "Submit now"}</button></section>}
-    {!confirmingSubmit && <div className="player-actions"><button type="button" className="secondary" disabled={stale || position === 0} onClick={() => goTo(position - 1)}>Previous</button><button type="button" disabled={stale || position === player.items.length - 1} onClick={() => goTo(position + 1)}>Next</button>{!stale && <><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a><button type="button" disabled={submitting} onClick={() => void openConfirmation()}>Submit practice</button></>}</div>}
+    {confirmingSubmit && <section className="submit-confirmation" aria-labelledby="submit-heading"><h2 id="submit-heading" ref={confirmationHeading} tabIndex={-1}>Ready to submit?</h2><p>{unansweredCount ? `You answered ${answeredCount} of ${player.items.length} questions. ${unansweredCount === 1 ? "1 question has" : `${unansweredCount} questions have`} no answer yet.` : `You answered all ${player.items.length} questions.`} When you submit, you can check your answers.</p><button type="button" className="secondary" onClick={reviewQuestions}>Review questions</button><button type="button" disabled={!interactive || submitting || stale} onClick={() => void submit()}>{unansweredCount ? "Submit anyway" : "Submit now"}</button></section>}
+    {!confirmingSubmit && <div className="player-actions"><button type="button" className="secondary" disabled={!interactive || stale || position === 0} onClick={() => goTo(position - 1)}>Previous</button><button type="button" disabled={!interactive || stale || position === player.items.length - 1} onClick={() => goTo(position + 1)}>Next</button>{!stale && <><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a><button type="button" disabled={!interactive || submitting} onClick={() => void openConfirmation()}>Submit practice</button></>}</div>}
   </section></main>;
 }
