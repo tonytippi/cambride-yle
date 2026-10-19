@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
+  // Specs share one disposable database and dev server, and each resets the schema.
+  workers: 1,
   testDir: "./tests/e2e",
   outputDir: "test-results",
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
