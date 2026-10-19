@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 10-19-2026 20:26
+last_updated: 10-19-2026 21:03
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
@@ -51,7 +51,7 @@ development_status:
   2-5-verify-pilot-content-readiness: done
   epic-2-retrospective: done
 
-  epic-3: in-progress
+  epic-3: done
   3-1-choose-or-resume-practice: done
   3-2-prepare-essential-media-and-safe-pwa-storage: done
   3-3-complete-the-five-p0-task-engines: done
@@ -234,4 +234,26 @@ action_items:
       writes."
     owner: "Development"
     status: done
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
+  - id: "epic-3-retro-item-23-purge-a-deactivated-learner-s-local-pwa"
+    epic: 3
+    action: "Purge a deactivated learner's local PWA data (drafts, cached media, account
+      namespace) on the next authenticated contact from that device, not only on another
+      sign-in or Sign out."
+    owner: "Development"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
+  - id: "epic-3-retro-item-24-show-each-item-s-picture-or-a-sound-refe"
+    epic: 3
+    action: "Show each item's picture or a sound reference in the post-submission
+      answer review."
+    owner: "Development"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
+  - id: "epic-3-retro-item-25-retire-the-unread-practice_attempt_evide"
+    epic: 3
+    action: "Retire the unread practice_attempt_evidence writes at submission in a
+      separate migration, preserving existing rows."
+    owner: "Development"
+    status: open
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
