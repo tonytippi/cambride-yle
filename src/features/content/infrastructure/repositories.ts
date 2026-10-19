@@ -21,15 +21,10 @@ import {
 } from "@/../db/schema";
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
-import { createHash } from "node:crypto";
 import type { MediaDraftInput, QuestionDraftInput } from "../domain/contracts";
+import { snapshotItemTags, snapshotMediaHash, supportingTargetIdsFor } from "../domain/snapshot";
 type Database =
   typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
-const evidenceDimensions = (value: unknown) => {
-  const dimensions = value as { spelling?: unknown; colours?: unknown; positions?: unknown } | undefined;
-  const values = (key: "spelling" | "colours" | "positions") => Array.isArray(dimensions?.[key]) ? dimensions[key].filter((item): item is string => typeof item === "string") : [];
-  return { spelling: values("spelling"), colours: values("colours"), positions: values("positions") };
-};
 const baseValues = (
   input: QuestionDraftInput | MediaDraftInput,
   actorId: string,
@@ -521,7 +516,6 @@ export async function createPublishedPracticeSet(
     ],
     createdBy: input.actorId,
   });
-  const supportingTargetIdsFor = (question: (typeof questions)[number]) => Array.isArray(question.supportingTargetIds) ? question.supportingTargetIds.filter((id): id is string => typeof id === "string") : [];
   const guidanceIds = [...new Set(questions.map((question) => question.guidanceId))];
   const targetIds = [...new Set(questions.flatMap((question) => [question.primaryTargetId, ...supportingTargetIdsFor(question)]))];
   const [guidance, targets] = await Promise.all([
@@ -557,20 +551,7 @@ export async function createPublishedPracticeSet(
       renderedOptions: question.options,
       answerPolicy: policySnapshot,
       feedback: { postSubmitHint: question.postSubmitHint ?? null },
-      tags: {
-        primaryTargetId: question.primaryTargetId,
-        supportingTargetIds: question.supportingTargetIds,
-        topicIds: question.topicIds,
-        guidanceId: question.guidanceId,
-        dimensions: {
-          vocabulary: [question.primaryTargetId, ...supportingTargetIdsFor(question)].flatMap((id) => targets.find((target) => target.id === id)?.category === "vocabulary" ? [targets.find((target) => target.id === id)!.canonicalId] : []),
-          grammar: [question.primaryTargetId, ...supportingTargetIdsFor(question)].flatMap((id) => targets.find((target) => target.id === id)?.category === "grammar" ? [targets.find((target) => target.id === id)!.canonicalId] : []),
-          names: Array.isArray(guidance.find((entry) => entry.id === question.guidanceId)?.approvedNames) ? (guidance.find((entry) => entry.id === question.guidanceId)!.approvedNames as unknown[]).filter((value): value is string => typeof value === "string") : [],
-          numbers: Array.isArray(guidance.find((entry) => entry.id === question.guidanceId)?.approvedNumbers) ? (guidance.find((entry) => entry.id === question.guidanceId)!.approvedNumbers as unknown[]).filter((value): value is number => typeof value === "number").map(String) : [],
-          ...evidenceDimensions(question.evidenceDimensions),
-          topic: [guidance.find((entry) => entry.id === question.guidanceId)?.topic ?? ""].filter(Boolean),
-        },
-      },
+      tags: snapshotItemTags(question, targets, guidance),
       accessibilityMetadata: question.accessibilityMetadata,
       provenance: question.provenance,
     });
@@ -581,16 +562,7 @@ export async function createPublishedPracticeSet(
         mediaVersionId: media.id,
         mediaType: media.mediaType,
         objectVersion: media.id,
-        contentHash: createHash("sha256")
-          .update(
-            JSON.stringify({
-              id: media.id,
-              previewUrl: media.previewUrl,
-              description: media.description,
-              provenance: media.provenance,
-            }),
-          )
-          .digest("hex"),
+        contentHash: snapshotMediaHash(media),
         accessibilityMetadata: media.accessibilityMetadata,
         provenance: media.provenance,
       });
