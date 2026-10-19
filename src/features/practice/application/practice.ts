@@ -1,20 +1,32 @@
 import type { Actor } from "@/features/identity/domain/contracts";
 import { z } from "zod";
-import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, submitAttemptSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedEvidence, type SubmittedPracticeResult, type SubmittedPracticeReview } from "../domain/contracts";
+import { attemptMediaSchema, learnerHomeFilterSchema, playbackSchema, preparePracticeSchema, practiceAttemptSchema, responseSchema, startPracticeSchema, submitAttemptSchema, type LearnerHome, type LearnerPracticeSet, type OpenPracticeAttempt, type PracticePlayer, type PracticePreparation, type PracticeResult, type PracticeStart, type SubmittedPracticeResult, type SubmittedPracticeReview } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
+import { evidenceState, latestFactsPerSet } from "@/features/evidence/domain/evidence-state";
+import type { SubmittedEvidenceFact } from "./evidence-contract";
 
-const recommendationVersion = "learner-home-v1";
+const recommendationVersion = "learner-home-v2";
 
-function latestEvidenceBySet(evidence: SubmittedEvidence[]) {
-  const latestAttempts = new Set<string>();
-  const selected: SubmittedEvidence[] = [];
-  for (const item of evidence) {
-    if (!latestAttempts.has(item.practiceSetId)) {
-      latestAttempts.add(item.practiceSetId);
-      selected.push(item);
-    } else if (selected.some((chosen) => chosen.practiceSetId === item.practiceSetId && chosen.attemptId === item.attemptId)) selected.push(item);
+const paperNames = { listening: "Listening", reading_writing: "Reading and Writing" } as const;
+/* Child-facing practice area: short controlled guidance text, else the readable canonical id, with its paper and part. */
+const practiceAreaLabel = (target: { guidance: string; canonicalId: string } | undefined, paper: keyof typeof paperNames, part: string) => {
+  const name = target && target.guidance.trim().length <= 60 ? target.guidance.trim() : target ? target.canonicalId.replace(/-/g, " ").replace(/^./, (first) => first.toLocaleUpperCase("en-GB")) : "Recent practice";
+  return `${name} · ${paperNames[paper]} Part ${part}`;
+};
+
+/* Practice areas use the teacher evidence rule: latest attempt per set in 30 days, grouped by paper/part and language target. */
+async function practiceAreas(learnerId: string) {
+  const facts = latestFactsPerSet(await repository.listLearnerEvidenceFacts(learnerId, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)));
+  const groups = new Map<string, SubmittedEvidenceFact[]>();
+  for (const fact of facts) {
+    const key = `${fact.paper}\0${fact.part}\0${fact.languageTargetId}`;
+    groups.set(key, [...(groups.get(key) ?? []), fact]);
   }
-  return selected;
+  const rate = (area: { correctOutcomes: number; assessableOutcomes: number }) => area.correctOutcomes / area.assessableOutcomes;
+  return [...groups.values()]
+    .map((group) => ({ paper: group[0]!.paper, part: group[0]!.part, targetId: group[0]!.languageTargetId, ...evidenceState(group) }))
+    .filter((area) => area.state === "needs practice" || area.state === "building")
+    .sort((a, b) => Number(a.state === "building") - Number(b.state === "building") || rate(a) - rate(b));
 }
 
 export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: string; taskType?: string } = {}): Promise<LearnerHome> {
@@ -31,19 +43,16 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
   }));
   const filters = { topic: valid.topic || undefined, taskType: valid.taskType || undefined, topics: [...new Set(allSets.map((set) => set.topic))], taskTypes: [...new Set(allSets.map((set) => set.taskType))] };
   const sets = allSets.filter((set) => (!filters.topic || set.topic === filters.topic) && (!filters.taskType || set.taskType === filters.taskType));
-  const evidence = latestEvidenceBySet(await repository.listRecentSubmittedEvidence(actor.id, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)));
-  const assessable = evidence.filter((item) => item.label !== "not_assessed_yet");
-  if (assessable.length < 3) return { allSets, sets, filters, recommendation: undefined };
-  const labelByArea = new Map<string, "building" | "needs_practice">();
-  for (const item of assessable)
-    if (item.label === "needs_practice" || (item.label === "building" && !labelByArea.has(item.practiceAreaId))) labelByArea.set(item.practiceAreaId, item.label);
-  const ranked = [...allSets].sort((a, b) => {
-    const rank = (set: LearnerPracticeSet) => set.targetIds.some((id) => labelByArea.get(id) === "needs_practice") ? 0 : set.targetIds.some((id) => labelByArea.get(id) === "building") ? 1 : 2;
-    return rank(a) - rank(b) || a.title.localeCompare(b.title, "en-GB");
-  }).slice(0, 3);
-  const matchingArea = [...labelByArea.entries()].find(([, label]) => label === "needs_practice") ?? [...labelByArea.entries()].find(([, label]) => label === "building");
-  if (!ranked.length || !matchingArea) return { allSets, sets, filters, recommendation: undefined };
-  const recommendation = { version: recommendationVersion, setIds: ranked.map((set) => set.id), practiceArea: matchingArea[0] };
+  const areas = await practiceAreas(actor.id);
+  const focus = areas[0];
+  if (!focus || !allSets.length) return { allSets, sets, filters, recommendation: undefined };
+  const rank = (set: LearnerPracticeSet) => {
+    const matching = areas.filter((area) => area.paper === set.paper && area.part === set.part && set.targetIds.includes(area.targetId));
+    return matching.some((area) => area.state === "needs practice") ? 0 : matching.length ? 1 : 2;
+  };
+  const ranked = [...allSets].sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, "en-GB")).slice(0, 3);
+  const [target] = await repository.getTargetLabels([focus.targetId]);
+  const recommendation = { version: recommendationVersion, setIds: ranked.map((set) => set.id), practiceArea: practiceAreaLabel(target, focus.paper, focus.part) };
   await repository.recordRecommendation(actor.id, recommendation.version, recommendation.setIds);
   return { allSets, sets, filters, recommendation };
 }

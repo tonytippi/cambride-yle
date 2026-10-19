@@ -16,13 +16,6 @@ export type LearnerPracticeSet = {
   lastSavedAt?: Date;
   submittedAttemptId?: string | null;
 };
-export type SubmittedEvidence = {
-  practiceSetId: string;
-  attemptId: string;
-  submittedAt: Date;
-  practiceAreaId: string;
-  label: EvidenceLabel;
-};
 export type LearnerHome = {
   allSets: LearnerPracticeSet[];
   sets: LearnerPracticeSet[];

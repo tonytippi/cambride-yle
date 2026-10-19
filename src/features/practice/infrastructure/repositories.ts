@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import {
   curriculumGuidance,
   curriculumTargets,
@@ -21,8 +21,8 @@ import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import { authoriseMedia, isMediaGatewayConfigured } from "./media-gateway";
 import { normaliseChoiceLabel } from "@/features/content/domain/contracts";
-import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedEvidence, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
-import type { SubmittedEvidenceDetail, SubmittedEvidenceFilter, SubmittedEvidenceReader } from "../application/evidence-contract";
+import type { LearnerEngine, OpenPracticeAttempt, PracticePlayer, PracticePreparation, PracticeStart, SubmittedPracticeResult, SubmittedPracticeReview } from "../domain/contracts";
+import type { SubmittedEvidenceDetail, SubmittedEvidenceFact, SubmittedEvidenceFilter, SubmittedEvidenceReader } from "../application/evidence-contract";
 
 type Database = typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
 
@@ -47,24 +47,6 @@ export async function listPublishedSetsForLearner(learnerId: string, db: Databas
     .where(eq(practiceSets.status, "published"))
     .orderBy(practiceSets.id, desc(practiceAttempts.lastSavedAt));
   return rows;
-}
-
-export async function listRecentSubmittedEvidence(learnerId: string, since: Date, db: Database = database): Promise<SubmittedEvidence[]> {
-  const rows = await db
-    .select({ practiceSetId: practiceAttemptEvidence.practiceSetId, attemptId: practiceAttempts.id, submittedAt: practiceAttempts.submittedAt, practiceAreaId: practiceAttemptEvidence.practiceAreaId, label: practiceAttemptEvidence.label })
-    .from(practiceAttemptEvidence)
-    .innerJoin(practiceAttempts, and(eq(practiceAttempts.id, practiceAttemptEvidence.attemptId), eq(practiceAttempts.learnerId, learnerId), eq(practiceAttempts.status, "submitted"), gte(practiceAttempts.submittedAt, since)))
-    .orderBy(desc(practiceAttempts.submittedAt), desc(practiceAttempts.id));
-  const attemptIds = [...new Set(rows.map((row) => row.attemptId))];
-  if (!attemptIds.length) return [];
-  const currentResolution = db.select({ reviewItemId: teacherEvidenceResolutions.reviewItemId, effectiveOutcome: teacherEvidenceResolutions.effectiveOutcome }).from(teacherEvidenceResolutions).where(sql`NOT EXISTS (SELECT 1 FROM teacher_evidence_resolutions newer WHERE newer.review_item_id = ${teacherEvidenceResolutions.reviewItemId} AND newer.revision > ${teacherEvidenceResolutions.revision})`).as("current_resolution");
-  const outcomes = await db.select({ attemptId: practiceAttemptReviewItems.attemptId, automaticOutcome: practiceAttemptReviewItems.outcome, effectiveOutcome: currentResolution.effectiveOutcome }).from(practiceAttemptReviewItems).leftJoin(currentResolution, eq(currentResolution.reviewItemId, practiceAttemptReviewItems.id)).where(inArray(practiceAttemptReviewItems.attemptId, attemptIds));
-  const labelByAttempt = new Map<string, "secure" | "building" | "needs_practice" | "not_assessed_yet">();
-  for (const attemptId of attemptIds) {
-    const attemptOutcomes = outcomes.filter((outcome) => outcome.attemptId === attemptId);
-    if (attemptOutcomes.length) labelByAttempt.set(attemptId, evidenceFor(attemptOutcomes.map((outcome) => outcome.effectiveOutcome ?? outcome.automaticOutcome)));
-  }
-  return rows.flatMap((row): SubmittedEvidence[] => row.submittedAt ? [{ ...row, submittedAt: row.submittedAt, label: labelByAttempt.get(row.attemptId) ?? row.label }] : []);
 }
 
 export async function recordRecommendation(learnerId: string, version: string, displayedSetIds: string[], db: Database = database) {
@@ -292,12 +274,21 @@ const filterEvidence = <T extends { learnerId: string; practiceSetId: string; pa
   return row.dimensions[key]?.includes(value) ?? false;
 }));
 
+/* Submitted facts with their current effective outcome; shared by teacher evidence and learner recommendations. */
+async function evidenceFacts(where?: SQL): Promise<SubmittedEvidenceFact[]> {
+  const currentResolution = database.select({ reviewItemId: teacherEvidenceResolutions.reviewItemId, effectiveOutcome: teacherEvidenceResolutions.effectiveOutcome, revision: teacherEvidenceResolutions.revision }).from(teacherEvidenceResolutions).where(sql`NOT EXISTS (SELECT 1 FROM teacher_evidence_resolutions newer WHERE newer.review_item_id = ${teacherEvidenceResolutions.reviewItemId} AND newer.revision > ${teacherEvidenceResolutions.revision})`).as("current_resolution");
+  const rows = await database.select({ attemptId: submittedEvidenceFacts.attemptId, learnerId: submittedEvidenceFacts.learnerId, learnerName: accounts.displayName, practiceSetId: submittedEvidenceFacts.practiceSetId, paper: submittedEvidenceFacts.paper, part: submittedEvidenceFacts.part, languageTargetId: submittedEvidenceFacts.languageTargetId, languageTarget: submittedEvidenceFacts.languageTarget, automaticOutcome: submittedEvidenceFacts.automaticOutcome, effectiveOutcome: currentResolution.effectiveOutcome, resolutionRevision: currentResolution.revision, submittedAt: submittedEvidenceFacts.submittedAt, dimensions: submittedEvidenceFacts.dimensions }).from(submittedEvidenceFacts).innerJoin(accounts, eq(accounts.id, submittedEvidenceFacts.learnerId)).leftJoin(currentResolution, eq(currentResolution.reviewItemId, submittedEvidenceFacts.reviewItemId)).where(where);
+  return rows.map((row) => ({ ...row, paper: row.paper as "listening" | "reading_writing", automaticOutcome: row.automaticOutcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", effectiveOutcome: (row.effectiveOutcome ?? row.automaticOutcome) as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", resolutionRevision: row.resolutionRevision ?? 0, dimensions: row.dimensions as Record<string, string[]> }));
+}
+
+export const listLearnerEvidenceFacts = (learnerId: string, since: Date) => evidenceFacts(and(eq(submittedEvidenceFacts.learnerId, learnerId), gte(submittedEvidenceFacts.submittedAt, since)));
+
+export async function getTargetLabels(targetIds: string[], db: Database = database) {
+  return targetIds.length ? db.select({ id: curriculumTargets.id, guidance: curriculumTargets.guidance, canonicalId: curriculumTargets.canonicalId }).from(curriculumTargets).where(inArray(curriculumTargets.id, targetIds)) : [];
+}
+
 export const submittedEvidenceReader: SubmittedEvidenceReader = {
-  async listSubmittedEvidenceFacts() {
-    const currentResolution = database.select({ reviewItemId: teacherEvidenceResolutions.reviewItemId, effectiveOutcome: teacherEvidenceResolutions.effectiveOutcome, revision: teacherEvidenceResolutions.revision }).from(teacherEvidenceResolutions).where(sql`NOT EXISTS (SELECT 1 FROM teacher_evidence_resolutions newer WHERE newer.review_item_id = ${teacherEvidenceResolutions.reviewItemId} AND newer.revision > ${teacherEvidenceResolutions.revision})`).as("current_resolution");
-    const rows = await database.select({ attemptId: submittedEvidenceFacts.attemptId, learnerId: submittedEvidenceFacts.learnerId, learnerName: accounts.displayName, practiceSetId: submittedEvidenceFacts.practiceSetId, paper: submittedEvidenceFacts.paper, part: submittedEvidenceFacts.part, languageTargetId: submittedEvidenceFacts.languageTargetId, languageTarget: submittedEvidenceFacts.languageTarget, automaticOutcome: submittedEvidenceFacts.automaticOutcome, effectiveOutcome: currentResolution.effectiveOutcome, resolutionRevision: currentResolution.revision, submittedAt: submittedEvidenceFacts.submittedAt, dimensions: submittedEvidenceFacts.dimensions }).from(submittedEvidenceFacts).innerJoin(accounts, eq(accounts.id, submittedEvidenceFacts.learnerId)).leftJoin(currentResolution, eq(currentResolution.reviewItemId, submittedEvidenceFacts.reviewItemId));
-    return rows.map((row) => ({ ...row, paper: row.paper as "listening" | "reading_writing", automaticOutcome: row.automaticOutcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", effectiveOutcome: (row.effectiveOutcome ?? row.automaticOutcome) as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", resolutionRevision: row.resolutionRevision ?? 0, dimensions: row.dimensions as Record<string, string[]> }));
-  },
+  listSubmittedEvidenceFacts: () => evidenceFacts(),
   async listSubmittedEvidenceDetails(filter) {
     const currentResolution = database.select({ reviewItemId: teacherEvidenceResolutions.reviewItemId, effectiveOutcome: teacherEvidenceResolutions.effectiveOutcome, revision: teacherEvidenceResolutions.revision }).from(teacherEvidenceResolutions).where(sql`NOT EXISTS (SELECT 1 FROM teacher_evidence_resolutions newer WHERE newer.review_item_id = ${teacherEvidenceResolutions.reviewItemId} AND newer.revision > ${teacherEvidenceResolutions.revision})`).as("current_resolution");
     const rows = await database.select({ attemptId: submittedEvidenceFacts.attemptId, reviewItemId: submittedEvidenceFacts.reviewItemId, practiceSetItemId: practiceAttemptReviewItems.practiceSetItemId, learnerId: submittedEvidenceFacts.learnerId, learnerName: accounts.displayName, practiceSetId: submittedEvidenceFacts.practiceSetId, paper: submittedEvidenceFacts.paper, part: submittedEvidenceFacts.part, languageTargetId: submittedEvidenceFacts.languageTargetId, languageTarget: submittedEvidenceFacts.languageTarget, automaticOutcome: submittedEvidenceFacts.automaticOutcome, effectiveOutcome: currentResolution.effectiveOutcome, resolutionRevision: currentResolution.revision, submittedAt: submittedEvidenceFacts.submittedAt, dimensions: submittedEvidenceFacts.dimensions, position: practiceAttemptReviewItems.position, response: practiceAttemptReviewItems.response, responseLabel: practiceAttemptReviewItems.responseLabel, timing: practiceAttempts.finalTiming, playback: practiceAttempts.playbackSnapshot }).from(submittedEvidenceFacts).innerJoin(practiceAttemptReviewItems, and(eq(practiceAttemptReviewItems.id, submittedEvidenceFacts.reviewItemId), eq(practiceAttemptReviewItems.attemptId, submittedEvidenceFacts.attemptId))).innerJoin(practiceAttempts, eq(practiceAttempts.id, submittedEvidenceFacts.attemptId)).innerJoin(accounts, eq(accounts.id, submittedEvidenceFacts.learnerId)).leftJoin(currentResolution, eq(currentResolution.reviewItemId, submittedEvidenceFacts.reviewItemId)).orderBy(desc(submittedEvidenceFacts.submittedAt), desc(submittedEvidenceFacts.attemptId), practiceAttemptReviewItems.position);

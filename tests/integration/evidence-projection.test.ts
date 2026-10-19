@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import postgres from "postgres";
-import { appendTeacherEvidenceResolution, listRecentSubmittedEvidence, submittedEvidenceReader } from "@/features/practice/infrastructure/repositories";
+import { appendTeacherEvidenceResolution, listLearnerEvidenceFacts, submittedEvidenceReader } from "@/features/practice/infrastructure/repositories";
 
 describe("submitted evidence projection migration", () => {
   it("persists immutable facts and immutable audit history from submitted review snapshots", async () => {
@@ -118,12 +118,12 @@ describe("submitted evidence projection migration", () => {
       expect(audit).toEqual([{ outcome: "SUCCESS" }]);
       expect(snapshot).toEqual([{ outcome: "needs_teacher_review", response: '"learner response"', evidence_label: "not_assessed_yet", label: "not_assessed_yet" }]);
       expect((await submittedEvidenceReader.listSubmittedEvidenceFacts()).find((fact) => fact.attemptId === attemptId)?.effectiveOutcome).toBe("correct");
-      expect((await listRecentSubmittedEvidence(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.label).toBe("secure");
+      expect((await listLearnerEvidenceFacts(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.effectiveOutcome).toBe("correct");
       await expect(appendTeacherEvidenceResolution({ reviewItemId: reviewId, outcome: "incorrect", reason: "Stale correction", expectedRevision: 0, resolverId: leadId })).resolves.toEqual({ error: "TEACHER_RESOLUTION_CONFLICT" });
       expect(await sql<{ count: string }[]>`SELECT count(*) FROM teacher_evidence_resolutions WHERE review_item_id = ${reviewId}`).toEqual([{ count: "1" }]);
-      expect((await listRecentSubmittedEvidence(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.label).toBe("secure");
+      expect((await listLearnerEvidenceFacts(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.effectiveOutcome).toBe("correct");
       await expect(appendTeacherEvidenceResolution({ reviewItemId: reviewId, outcome: "incorrect", reason: "Correction", expectedRevision: 1, resolverId: leadId })).resolves.toEqual({ revision: 2, effectiveOutcome: "incorrect" });
-      expect((await listRecentSubmittedEvidence(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.label).toBe("needs_practice");
+      expect((await listLearnerEvidenceFacts(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.effectiveOutcome).toBe("incorrect");
     } finally { await sql.end(); }
   });
 

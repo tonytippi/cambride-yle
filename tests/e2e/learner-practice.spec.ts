@@ -87,6 +87,12 @@ test("answers given offline are saved after reconnecting and appear in the submi
     await expect(reviewed.nth(0)).toContainText("Your answer: False");
     await expect(reviewed.nth(1)).toContainText("Your answer: dog");
     await expect(reviewed.nth(2)).toContainText("Your answer: No answer");
+
+    // Three assessable outcomes for one target now produce a readable, actionable recommendation.
+    await page.getByRole("link", { name: "Back to your practice" }).click();
+    const recommended = page.getByRole("region", { name: "Recommended for you" });
+    await expect(recommended).toContainText("Practise this next: Pet vocabulary · Reading and Writing Part 1");
+    await expect(recommended.getByRole("link", { name: "Review" })).toHaveAttribute("href", /\/review$/);
   } finally {
     await context.close();
   }
