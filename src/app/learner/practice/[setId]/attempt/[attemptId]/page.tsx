@@ -1,3 +1,4 @@
+import { AccountStorageGuard } from "@/features/pwa/ui";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/features/identity/ui/session";
 import { getPracticePlayer, getSubmittedPracticeReview } from "@/features/practice/application/practice";
@@ -12,5 +13,5 @@ export default async function OpenAttemptPlayer({ params }: { params: Promise<{ 
     const review = await getSubmittedPracticeReview(actor, values);
     redirect("data" in review ? `/learner/practice/${values.setId}/attempt/${values.attemptId}/review` : "/learner");
   }
-  return <PracticePlayer player={result.data} accountId={actor.id} />;
+  return <><AccountStorageGuard accountId={actor.id} /><PracticePlayer player={result.data} accountId={actor.id} /></>;
 }

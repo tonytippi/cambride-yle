@@ -1,5 +1,9 @@
 export const pwaCachePrefix = "cambridgeyle-v1";
 
+/* Device-level records hold only account ids: the last learner on this device and which page client belongs to which account. */
+export const lastAccountKey = `${pwaCachePrefix}:device:last-account`;
+export const clientAccountCacheName = `${pwaCachePrefix}:clients`;
+
 export function cacheNamespace(accountId: string) { return `${pwaCachePrefix}:account:${accountId}`; }
 export function namespacedDraftKey(accountId: string, attemptId: string, setVersionId: string) { return `${cacheNamespace(accountId)}:attempt:${attemptId}:set:${setVersionId}`; }
 export function isNamespacedKey(key: string, accountId: string) { return key.startsWith(`${cacheNamespace(accountId)}:`); }

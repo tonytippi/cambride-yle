@@ -5,7 +5,7 @@ import { approveSeededSet, e2eDatabaseUrl, publishSeededSet, resetE2eSchema } fr
 
 const id = () => crypto.randomUUID();
 const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() } };
-const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id() };
+const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id(), offlineMedia: id(), switchFrom: id(), switchTo: id() };
 const tokens = Object.fromEntries(Object.keys(learners).map((key) => [key, id()])) as Record<keyof typeof learners, string>;
 const policy = (canonicalAnswer: string | boolean, inputKind: string) => ({ canonicalAnswer, acceptedAnswers: [], inputKind, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId: fixture.policyId, version: 1 });
 
@@ -230,6 +230,52 @@ test("the player announces question changes, exposes selected answers and states
     await expect(page.getByText("You answered 1 of 3 questions. 2 questions have no answer yet. When you submit, you can check your answers.")).toBeVisible();
     await button(page, "Review questions").click();
     await expect(page.getByRole("heading", { name: "Question 2 of 3" })).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
+const deviceStorage = (page: Page) => page.evaluate(async () => {
+  const drafts = await new Promise<string>((resolve) => {
+    const opened = indexedDB.open("cambridgeyle-open-attempt-drafts");
+    opened.onsuccess = () => { const all = opened.result.transaction("drafts").objectStore("drafts").getAll(); all.onsuccess = () => { resolve(JSON.stringify(all.result)); opened.result.close(); }; };
+  });
+  return { drafts, caches: await caches.keys() };
+});
+
+test("cached practice media stays available offline after the service worker restarts", async ({ browser }) => {
+  const { context, page } = await openAttempt(browser, "offlineMedia");
+  try {
+    // The first page registers the worker; reload so the player is a controlled client that announces its account.
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+    await page.reload();
+    await expect(page.locator(".picture-stimuli img")).toHaveJSProperty("complete", true);
+    const source = await page.locator(".picture-stimuli img").getAttribute("src");
+    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(expect.arrayContaining([expect.stringMatching(/:media$/)]));
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("ServiceWorker.enable");
+    await cdp.send("ServiceWorker.stopAllWorkers");
+    // Wake a fresh worker instance online (its in-memory account map is empty), then rely on it offline.
+    await expect.poll(() => page.evaluate(async (url) => (await fetch(url!)).ok, source)).toBe(true);
+    await context.setOffline(true);
+    await expect.poll(() => page.evaluate(async (url) => { try { return (await fetch(url!)).ok; } catch { return false; } }, source)).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test("another learner opening the device removes the previous learner's local practice data", async ({ browser }) => {
+  const { context, page } = await openAttempt(browser, "switchFrom");
+  try {
+    await context.setOffline(true);
+    await button(page, "True").click();
+    await expect.poll(async () => (await deviceStorage(page)).drafts).toContain(learners.switchFrom);
+    await context.setOffline(false);
+    await context.clearCookies();
+    await context.addCookies([{ name: "cambridgeyle_session", value: tokens.switchTo, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+    await page.goto("/learner");
+    await expect.poll(async () => (await deviceStorage(page)).drafts).not.toContain(learners.switchFrom);
+    expect((await deviceStorage(page)).caches.filter((name) => name.includes(learners.switchFrom))).toEqual([]);
   } finally {
     await context.close();
   }

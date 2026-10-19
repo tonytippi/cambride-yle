@@ -1,3 +1,4 @@
+import { AccountStorageGuard } from "@/features/pwa/ui";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/features/identity/ui/session";
 import { getSubmittedPracticeReview } from "@/features/practice/application/practice";
@@ -7,5 +8,5 @@ export default async function ReviewAttempt({ params }: { params: Promise<{ setI
   const [actor, values] = await Promise.all([requireRole(["learner"]), params]);
   const result = await getSubmittedPracticeReview(actor, values);
   if ("error" in result) notFound();
-  return <SubmittedPracticeReview review={result.data} />;
+  return <><AccountStorageGuard accountId={actor.id} /><SubmittedPracticeReview review={result.data} /></>;
 }

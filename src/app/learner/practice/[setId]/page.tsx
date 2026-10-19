@@ -1,3 +1,4 @@
+import { AccountStorageGuard } from "@/features/pwa/ui";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/features/identity/ui/session";
@@ -9,5 +10,5 @@ export default async function PracticePreparationPage({ params, searchParams }: 
   const replaceAttemptId = z.string().uuid().safeParse(restart).data;
   const result = await preparePractice(actor, { setId });
   if ("error" in result && result.error.code === "SET_NOT_FOUND") notFound();
-  return <Preparation initial={result} replaceAttemptId={replaceAttemptId} />;
+  return <><AccountStorageGuard accountId={actor.id} /><Preparation initial={result} replaceAttemptId={replaceAttemptId} /></>;
 }
