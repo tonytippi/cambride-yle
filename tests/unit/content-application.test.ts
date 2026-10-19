@@ -14,6 +14,7 @@ const dependencies = vi.hoisted(() => ({
   getQuestionMediaEntries: vi.fn(),
   lockQuestionMediaEntries: vi.fn(),
   getReadinessCandidates: vi.fn(),
+  getReadinessTargetCategories: vi.fn(),
   createPublishedPracticeSet: vi.fn(),
   createPracticeSetDraft: vi.fn(),
   lockPracticeSet: vi.fn(),
@@ -104,6 +105,7 @@ describe("content draft use cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.AI_DRAFT_PROVIDER_GATE_CLOSED = false;
+    dependencies.getReadinessTargetCategories.mockResolvedValue([]);
     dependencies.transaction.mockImplementation(
       async (boundary: (...args: [object]) => unknown) =>
         boundary({ transaction: "boundary" }),
@@ -211,6 +213,29 @@ describe("content draft use cases", () => {
     expect(readiness.coverage).toHaveLength(2);
     expect(readiness.coverage.find((item) => item.guidanceId === "guidance-1")).toMatchObject({ gaps: ["PRIMARY_OBJECTIVES_INVALID"] });
     expect(readiness.coverage.find((item) => item.guidanceId === "guidance-2")).toMatchObject({ composition: expect.objectContaining({ durationSeconds: 300 }), gaps: [] });
+  });
+  it("does not combine questions from different selected topics to prove one composition", () => {
+    const candidate = (id: string, topicIds: string[]) => ({ question: { id, engine: "picture_true_false", paper: "reading_writing", part: "1", primaryTargetId: "target-1", supportingTargetIds: [], topicIds, estimatedDurationSeconds: "180" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Picture true false" }, media: null });
+    const readiness = buildContentReadiness([candidate("question-1", ["topic-farm"]), candidate("question-2", ["topic-pets"]), candidate("question-3", ["topic-pets", "topic-zoo"]), candidate("question-4", [])] as never);
+    expect(readiness.coverage).toHaveLength(4);
+    expect(readiness.coverage.find((item) => item.topicTargetId === "topic-farm")).toMatchObject({ composition: undefined, gaps: ["DURATION_TOO_SHORT"] });
+    expect(readiness.coverage.find((item) => item.topicTargetId === "topic-pets")).toMatchObject({ composition: { questionIds: ["question-2", "question-3"], durationSeconds: 360 }, gaps: [] });
+    expect(readiness.coverage.find((item) => item.topicTargetId === "topic-zoo")).toMatchObject({ gaps: ["DURATION_TOO_SHORT"] });
+    expect(readiness.coverage.find((item) => item.topicTargetId === null)).toMatchObject({ gaps: ["DURATION_TOO_SHORT", "TOPIC_NOT_SELECTED"] });
+  });
+  it("does not cover an engine from a composition without a selected topic", () => {
+    const readiness = buildContentReadiness([{ question: { id: "question-1", engine: "word_bank_cloze", paper: "reading_writing", part: "4", primaryTargetId: "target-1", supportingTargetIds: [], topicIds: [], estimatedDurationSeconds: "300" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Word bank cloze" }, media: null }] as never);
+    expect(readiness.coverage[0]).toMatchObject({ composition: expect.objectContaining({ durationSeconds: 300 }), gaps: ["TOPIC_NOT_SELECTED"] });
+    expect(readiness.engines.find((item) => item.engine === "word_bank_cloze")).toMatchObject({ covered: false, gaps: ["NO_COMPOSABLE_TOPIC_TASK_TYPE"] });
+  });
+  it("reports vocabulary, grammar and other targets by their controlled category", () => {
+    const readiness = buildContentReadiness([{ question: { id: "question-1", engine: "word_bank_cloze", paper: "reading_writing", part: "4", primaryTargetId: "vocab-1", supportingTargetIds: ["grammar-1", "topic-1", "unknown-1"], topicIds: ["topic-1"], estimatedDurationSeconds: "300" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Word bank cloze" }, media: null }] as never, new Map([["vocab-1", "vocabulary"], ["grammar-1", "grammar"], ["topic-1", "topic"]]));
+    expect(readiness.coverage[0]).toMatchObject({ topicTargetId: "topic-1", vocabularyTargetIds: ["vocab-1"], grammarTargetIds: ["grammar-1"], otherTargetIds: ["topic-1", "unknown-1"] });
+  });
+  it("reads controlled target categories for the readiness view", async () => {
+    dependencies.getReadinessCandidates.mockResolvedValue([{ question: { id: "question-1", engine: "word_bank_cloze", paper: "reading_writing", part: "4", primaryTargetId: "grammar-1", supportingTargetIds: [], topicIds: ["topic-1"], estimatedDurationSeconds: "300" }, guidance: { id: "guidance-1", topic: "Animals", taskFormat: "Word bank cloze" }, media: null }]);
+    dependencies.getReadinessTargetCategories.mockResolvedValue([{ id: "grammar-1", category: "grammar" }]);
+    await expect(getContentReadiness(lead)).resolves.toMatchObject({ coverage: [expect.objectContaining({ vocabularyTargetIds: [], grammarTargetIds: ["grammar-1"] })] });
   });
   it("authorises readiness before reading candidates and excludes current retired media", async () => {
     await expect(getContentReadiness(teacher)).rejects.toMatchObject({ code: "FORBIDDEN" });

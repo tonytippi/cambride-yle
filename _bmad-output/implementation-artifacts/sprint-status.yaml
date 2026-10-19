@@ -139,7 +139,7 @@ action_items:
     action: "Partition readiness proof by published topic/task-type and correctly
       categorise vocabulary and grammar targets."
     owner: "Development"
-    status: open
+    status: done
     ref: "/home/sonnh/projects/cambride-yle/_bmad-output/implementation-artifacts/epic-2-retro-08-22-2026.md"
   - id: "epic-2-retro-item-11-add-staff-publication-to-learner-selecti"
     epic: 2

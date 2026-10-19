@@ -115,7 +115,7 @@ const compositionFor = (questions: ReadinessQuestion[], limitObjectives: boolean
     return duration >= 300 && duration <= 600;
   });
 };
-export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
+export const buildContentReadiness = (candidates: ReadinessCandidate[], targetCategories: ReadonlyMap<string, string> = new Map()) => {
   const questions = new Map<string, ReadinessQuestion>();
   for (const { question, media, guidance } of candidates) {
     const current = questions.get(question.id) ?? {
@@ -135,13 +135,20 @@ export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
   for (const question of questions.values())
     question.mediaEligible = question.media.every((media) => media.status === "published") &&
       (!audioEngines.has(question.engine) || question.media.some((media) => media.mediaType === "audio" && media.status === "published"));
-  const all = [...questions.values()];
-  const groups = new Map<string, ReadinessQuestion[]>();
-  for (const question of all) {
-    const key = `${question.engine}:${question.paper}:${question.part}:${question.guidanceId}`;
-    groups.set(key, [...(groups.get(key) ?? []), question]);
-  }
-  const coverage = [...groups.values()].map((group) => {
+  const groups = new Map<string, { topicTargetId: string | null; questions: ReadinessQuestion[] }>();
+  for (const question of questions.values())
+    for (const topicTargetId of question.topicIds.length ? [...new Set(question.topicIds)] : [null]) {
+      const key = `${question.engine}:${question.paper}:${question.part}:${question.guidanceId}:${topicTargetId ?? ""}`;
+      const group = groups.get(key) ?? { topicTargetId, questions: [] };
+      group.questions.push(question);
+      groups.set(key, group);
+    }
+  const targetsIn = (group: ReadinessQuestion[], category: "vocabulary" | "grammar" | "other") => [...new Set(group.flatMap((candidate) => [candidate.primaryTargetId, ...candidate.supportingTargetIds]))]
+    .filter((id) => {
+      const current = targetCategories.get(id);
+      return category === "other" ? current !== "vocabulary" && current !== "grammar" : current === category;
+    });
+  const coverage = [...groups.values()].map(({ topicTargetId, questions: group }) => {
     const [question] = group;
     const pool = group.filter((candidate) => candidate.mediaEligible);
     const proof = compositionFor(pool, true);
@@ -154,6 +161,7 @@ export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
       ...(!missingAudio && unpublishedMedia ? ["ASSOCIATED_MEDIA_NOT_PUBLISHED"] : []),
       ...(!proof && pool.length ? durationProof ? ["PRIMARY_OBJECTIVES_INVALID"] : [totalDuration < 300 ? "DURATION_TOO_SHORT" : "DURATION_OUT_OF_RANGE"] : []),
       ...(!pool.length && !missingAudio && !unpublishedMedia ? ["NO_ELIGIBLE_QUESTION"] : []),
+      ...(topicTargetId ? [] : ["TOPIC_NOT_SELECTED"]),
     ];
     return {
       engine: question.engine,
@@ -162,20 +170,24 @@ export const buildContentReadiness = (candidates: ReadinessCandidate[]) => {
       guidanceId: question.guidanceId,
       topic: question.topic,
       taskType: question.taskType,
-      vocabularyGrammarTargets: [...new Set(group.flatMap((candidate) => [candidate.primaryTargetId, ...candidate.supportingTargetIds]))],
-      topicTargetIds: [...new Set(group.flatMap((candidate) => candidate.topicIds))],
+      topicTargetId,
+      vocabularyTargetIds: targetsIn(group, "vocabulary"),
+      grammarTargetIds: targetsIn(group, "grammar"),
+      otherTargetIds: targetsIn(group, "other"),
       estimatedDurationSeconds: group.reduce((total, candidate) => total + candidate.estimatedDurationSeconds, 0),
       mediaEligible: pool.length === group.length,
       composition: proof && { questionIds: proof.map((item) => item.id), durationSeconds: proof.reduce((total, item) => total + item.estimatedDurationSeconds, 0), primaryTargetIds: [...new Set(proof.map((item) => item.primaryTargetId))] },
       gaps,
     };
   });
-  return { coverage, engines: (awaitableEngines as readonly string[]).map((engine) => ({ engine, covered: coverage.some((item) => item.engine === engine && item.composition), gaps: coverage.some((item) => item.engine === engine && item.composition) ? [] : coverage.some((item) => item.engine === engine) ? ["NO_COMPOSABLE_TOPIC_TASK_TYPE"] : ["NO_PUBLISHED_QUESTION"] })) };
+  const covers = (item: (typeof coverage)[number], engine: string) => item.engine === engine && !!item.composition && !!item.topicTargetId;
+  return { coverage, engines: (awaitableEngines as readonly string[]).map((engine) => ({ engine, covered: coverage.some((item) => covers(item, engine)), gaps: coverage.some((item) => covers(item, engine)) ? [] : coverage.some((item) => item.engine === engine) ? ["NO_COMPOSABLE_TOPIC_TASK_TYPE"] : ["NO_PUBLISHED_QUESTION"] })) };
 };
 const awaitableEngines = ["picture_true_false", "picture_yes_no", "audio_picture_choice", "audio_note_taking", "word_bank_cloze"] as const;
 export async function getContentReadiness(actor: Actor) {
   staff(actor);
-  return buildContentReadiness(await repository.getReadinessCandidates());
+  const [candidates, categories] = await Promise.all([repository.getReadinessCandidates(), repository.getReadinessTargetCategories()]);
+  return buildContentReadiness(candidates, new Map(categories.map((target) => [target.id, target.category])));
 }
 async function validateReferences(
   input: QuestionDraftInput | MediaDraftInput,

@@ -15,6 +15,7 @@ import { createAnswerPolicyVersion, createCurriculumGuidance, createCurriculumTa
 import {
   approveContent,
   approvePracticeSet,
+  getContentReadiness,
   createManualMedia,
   createManualQuestion,
   createPracticeSetDraft,
@@ -87,6 +88,9 @@ describe("staff publication to learner evidence", () => {
       await submitForReview(lead, question);
       await approveContent(admin, question);
       await publishContent(lead, question);
+
+      const readiness = await getContentReadiness(lead);
+      expect(readiness.coverage.filter((item) => item.guidanceId === guidanceId)).toEqual([expect.objectContaining({ topicTargetId: topicId, vocabularyTargetIds: [targetId], grammarTargetIds: [], mediaEligible: true, composition: expect.objectContaining({ questionIds: [questionId] }), gaps: [] })]);
 
       // Set lifecycle with independent approval.
       const setId = await createPracticeSetDraft(lead, { title: `Toy colours ${suffix}`, questionIds: [questionId] });

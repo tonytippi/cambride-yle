@@ -181,6 +181,9 @@ export async function getReadinessCandidates(db: Database = database) {
     .where(eq(questionDrafts.status, "published"))
     .orderBy(asc(questionDrafts.engine), asc(questionDrafts.paper), asc(questionDrafts.part), asc(questionVersionMedia.position));
 }
+export async function getReadinessTargetCategories(db: Database = database) {
+  return db.select({ id: curriculumTargets.id, category: curriculumTargets.category }).from(curriculumTargets);
+}
 export async function getContent(
   kind: "question" | "media",
   id: string,
