@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => ({ listSubmittedEvidenceFacts: vi.fn(), listSubmittedEvidenceDetails: vi.fn(), appendTeacherEvidenceResolution: vi.fn(), getActiveLearnerById: vi.fn(), recordEvidenceRead: vi.fn(), recordEvidenceResolution: vi.fn() }));
 vi.mock("@/features/evidence/infrastructure/repositories", () => ({ submittedEvidenceReader: { listSubmittedEvidenceFacts: dependencies.listSubmittedEvidenceFacts, listSubmittedEvidenceDetails: dependencies.listSubmittedEvidenceDetails }, appendTeacherEvidenceResolution: dependencies.appendTeacherEvidenceResolution }));
@@ -11,7 +11,8 @@ const resolutionInput = { reviewItemId: "018f0000-0000-7000-8000-000000000006", 
 const row = (outcome: "correct" | "incorrect" | "unanswered" | "needs_teacher_review", learnerId = "018f0000-0000-7000-8000-000000000002") => ({ attemptId: "018f0000-0000-7000-8000-000000000005", learnerId, learnerName: "Learner", practiceSetId: "018f0000-0000-7000-8000-000000000003", paper: "listening" as const, part: "2", languageTargetId: "018f0000-0000-7000-8000-000000000004", languageTarget: "numbers", automaticOutcome: outcome, submittedAt: new Date("2026-08-20T12:00:00Z") });
 
 describe("centre evidence application", () => {
-  beforeEach(() => { vi.clearAllMocks(); dependencies.getActiveLearnerById.mockResolvedValue({ id: row("correct").learnerId }); dependencies.listSubmittedEvidenceFacts.mockResolvedValue([]); dependencies.listSubmittedEvidenceDetails.mockResolvedValue([]); });
+  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-08-21T12:00:00Z")); vi.clearAllMocks(); dependencies.getActiveLearnerById.mockResolvedValue({ id: row("correct").learnerId }); dependencies.listSubmittedEvidenceFacts.mockResolvedValue([]); dependencies.listSubmittedEvidenceDetails.mockResolvedValue([]); });
   it("authorises before reading evidence", async () => {
     await expect(getCentreEvidence({ ...teacher, role: "learner" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(dependencies.listSubmittedEvidenceFacts).not.toHaveBeenCalled();
