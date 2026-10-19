@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-18-2026 12:00
-last_updated: 10-19-2026 19:31
+last_updated: 10-19-2026 19:39
 project: CambridgeYLE
 project_key: NOKEY
 tracking_system: file-system
@@ -187,14 +187,14 @@ action_items:
       on question change and confirmation, distinct Play/Replay labels, policy-driven
       note-taking hint, word-bank React keys, and reconcile the 48px/56px answer height."
     owner: "Development"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
   - id: "epic-3-retro-item-17-run-a-child-friendly-copy-pass-over-lear"
     epic: 3
     action: "Run a child-friendly copy pass over learner status, recovery, save, preparation
       and confirmation messages while keeping recovery honesty."
     owner: "Development"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
   - id: "epic-3-retro-item-18-after-the-product-decision-on-repeat-pra"
     epic: 3
@@ -224,7 +224,7 @@ action_items:
     action: "Stop sending audio_note_taking options to the client and reject note-taking
       options containing an accepted answer during validation."
     owner: "Development"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-10-19-2026.md"
   - id: "epic-3-retro-item-22-add-learner-flow-verification-a-browser"
     epic: 3
