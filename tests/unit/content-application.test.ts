@@ -172,6 +172,16 @@ describe("content draft use cases", () => {
     expect(dependencies.lockCompatibleMediaForQuestion).toHaveBeenCalledBefore(dependencies.generate);
     expect(dependencies.createQuestion).toHaveBeenCalledWith(expect.objectContaining({ mediaIds: [mediaId] }), lead.id, "generated", { transaction: "boundary" }, undefined);
   });
+  it("rejects note-taking options that reveal an accepted answer and never accepts them as an exception", async () => {
+    const noteTaking = { ...input, paper: "listening" as const, part: 2, engine: "audio_note_taking" as const, prompt: "Write the name.", options: ["Write the name"], mediaIds: undefined };
+    const references = (acceptedAnswers: string[]) => ({ targets: [{ id: input.primaryTargetId, isApproved: true }, { id: input.topicIds[0], isApproved: true }], guidance: { paper: "listening", part: 2, engine: "audio_note_taking", maxWords: 10, maxOptions: 2 }, policy: { policy: { targetId: input.primaryTargetId, guidanceId: input.guidanceId, paper: "listening", part: 2, engine: "audio_note_taking" }, version: { canonicalAnswer: "Tom", acceptedAnswers } } });
+    dependencies.getControlledReferences.mockResolvedValue(references(["Write the name"]));
+    await expect(createManualQuestion(lead, noteTaking)).rejects.toMatchObject({ code: "VALIDATION_FAILED", findings: expect.arrayContaining([expect.objectContaining({ code: "NOTE_TAKING_OPTION_REVEALS_ANSWER" })]) });
+    expect(dependencies.createQuestion).not.toHaveBeenCalled();
+    dependencies.latestValidation.mockResolvedValue({ id: "018f0000-0000-7000-8000-000000000010", findings: [{ field: "options", code: "NOTE_TAKING_OPTION_REVEALS_ANSWER", message: "Leak" }] });
+    await expect(acceptException(lead, { kind: "question", targetId: "018f0000-0000-7000-8000-000000000009", reason: "Legacy exception" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(dependencies.recordReview).not.toHaveBeenCalled();
+  });
   it("rejects retired media before persisting a question", async () => {
     const mediaId = "018f0000-0000-7000-8000-000000000015";
     dependencies.lockCompatibleMediaForQuestion.mockResolvedValue([{ id: mediaId, paper: input.paper, part: "1", engine: input.engine, status: "retired" }]);

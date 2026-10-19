@@ -59,6 +59,13 @@ export const accessibilityLeakageFindings = (altText: unknown, options: unknown)
   if (Array.isArray(options) && options.some((option) => typeof option === "string" && option.trim() && new RegExp(`(?:^|[^\\p{L}\\p{N}])${tokenPattern(option.trim())}(?:$|[^\\p{L}\\p{N}])`, "iu").test(altText))) findings.push({ field: "accessibilityMetadata.altText", code: "ACCESSIBILITY_OPTION_LEAKAGE", message: "Alternative text must not disclose an answer option." });
   return findings;
 };
+/* Note-taking options are never shown, so one containing an accepted answer can only leak it. */
+export const noteTakingOptionFindings = (engine: unknown, options: unknown, answers: unknown[]): ContentFindings => {
+  if (engine !== "audio_note_taking" || !Array.isArray(options)) return [];
+  const tokens = answers.filter((answer) => typeof answer === "string" || typeof answer === "number").map((answer) => String(answer).trim()).filter(Boolean);
+  const leaks = options.some((option) => typeof option === "string" && tokens.some((token) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${tokenPattern(token)}(?:$|[^\\p{L}\\p{N}])`, "iu").test(option)));
+  return leaks ? [{ field: "options", code: "NOTE_TAKING_OPTION_REVEALS_ANSWER", message: "Note-taking options must not contain an accepted answer." }] : [];
+};
 type AssociatedMedia = {
   id?: string;
   mediaType: string;

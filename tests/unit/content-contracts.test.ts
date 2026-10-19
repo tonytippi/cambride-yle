@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { accessibilityLeakageFindings, engineMediaFindings, generationRequestSchema, mediaDraftSchema, phonePreviewInputSchema, questionDraftSchema, reasonInputSchema } from "@/features/content/domain/contracts";
+import { accessibilityLeakageFindings, engineMediaFindings, noteTakingOptionFindings, generationRequestSchema, mediaDraftSchema, phonePreviewInputSchema, questionDraftSchema, reasonInputSchema } from "@/features/content/domain/contracts";
 import { outputHash } from "@/features/content/domain/provenance";
 const base = { paper: "reading_writing", part: 1, engine: "picture_true_false", primaryTargetId: "018f0000-0000-7000-8000-000000000002", supportingTargetIds: [], topicIds: ["018f0000-0000-7000-8000-000000000003"], guidanceId: "018f0000-0000-7000-8000-000000000004", estimatedDurationSeconds: 60, accessibilityMetadata: { altText: "Cat" }, provenance: { source: "Original", rightsReference: "Owned" } };
+describe("note-taking option leakage", () => {
+  it("flags note-taking options that contain an accepted answer as a whole word", () => {
+    expect(noteTakingOptionFindings("audio_note_taking", ["Write the cat's name: Tom"], ["tom"])).toEqual([expect.objectContaining({ code: "NOTE_TAKING_OPTION_REVEALS_ANSWER", field: "options" })]);
+    expect(noteTakingOptionFindings("audio_note_taking", ["It has 7 legs"], [7])).toHaveLength(1);
+    expect(noteTakingOptionFindings("audio_note_taking", ["Write the name"], ["Tom", "Thomas"])).toEqual([]);
+    expect(noteTakingOptionFindings("audio_note_taking", ["Tomato"], ["tom"])).toEqual([]);
+    expect(noteTakingOptionFindings("word_bank_cloze", ["cat", "dog"], ["cat"])).toEqual([]);
+  });
+});
 describe("engine media contract", () => {
   it("requires learner-safe media and unique non-revealing picture labels", () => {
     expect(engineMediaFindings("picture_true_false", [])).toEqual(expect.arrayContaining([expect.objectContaining({ code: "IMAGE_MEDIA_REQUIRED" })]));

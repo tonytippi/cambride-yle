@@ -5,6 +5,7 @@ import type { Actor } from "@/features/identity/domain/contracts";
 import { serverConfig } from "@/shared/config/server";
 import {
   accessibilityLeakageFindings,
+  noteTakingOptionFindings,
   engineMediaFindings,
   composePracticeSetSchema,
   findingsFrom,
@@ -247,6 +248,8 @@ async function validateReferences(
     if (input.options.length > refs.guidance.maxOptions)
       findings.push({ field: "options", code: "TEMPLATE_MAX_OPTIONS_EXCEEDED", message: "The options exceed the selected guidance option limit." });
   }
+  if (refs.policy?.version && "options" in input)
+    findings.push(...noteTakingOptionFindings(input.engine, input.options, [refs.policy.version.canonicalAnswer, ...(refs.policy.version.acceptedAnswers as unknown[])]));
   if (findings.length)
     throw new ContentError(
       "VALIDATION_FAILED",
@@ -500,6 +503,7 @@ const nonExceptionable = (findings: ContentFindings) =>
     (finding) =>
       finding.code === "IMAGE_MEDIA_REQUIRED" ||
       finding.code === "AUDIO_MEDIA_REQUIRED" ||
+      finding.code === "NOTE_TAKING_OPTION_REVEALS_ANSWER" ||
       finding.code.startsWith("CHOICE_LABEL_"),
   );
 const currentMediaFindings = async (
