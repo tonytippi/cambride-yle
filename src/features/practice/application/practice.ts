@@ -59,12 +59,12 @@ export async function getLearnerHome(actor: Actor, requestedFilters: { topic?: s
 }
 
 const preparationMessages = {
-  SET_NOT_FOUND: "This practice activity is no longer available.",
-  SET_RETIRED: "This practice activity is no longer available.",
-  OPEN_ATTEMPT_EXISTS: "You already have this practice activity open. Please resume it.",
-  MEDIA_UNAVAILABLE: "Essential media is not available. Please retry or choose another activity.",
-  MEDIA_AUTHORISATION_FAILED: "Essential media is not available. Please retry or choose another activity.",
-  ESSENTIAL_MEDIA_MISSING: "This practice activity is missing essential media.",
+  SET_NOT_FOUND: "This practice is no longer available. Please choose another one.",
+  SET_RETIRED: "This practice is no longer available. Please choose another one.",
+  OPEN_ATTEMPT_EXISTS: "You already started this practice. Tap Resume to carry on.",
+  MEDIA_UNAVAILABLE: "Some pictures or sounds are not working. Try again or choose another practice.",
+  MEDIA_AUTHORISATION_FAILED: "Some pictures or sounds are not working. Try again or choose another practice.",
+  ESSENTIAL_MEDIA_MISSING: "This practice is missing a picture or sound. Please choose another one.",
   RESTART_TARGET_INVALID: "This practice has changed. Go back to your practice list and try again.",
 } as const;
 
@@ -76,7 +76,7 @@ export async function preparePractice(actor: Actor, input: unknown): Promise<Pra
   const denied = learnerOnly(actor);
   if (denied) return denied;
   const parsed = preparePracticeSchema.safeParse(input);
-  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Please choose a practice from your list." } };
   const { setId } = parsed.data;
   const result = await repository.preparePublishedPractice(actor.id, setId);
   return "error" in result ? { error: { code: result.error, message: preparationMessages[result.error] } } : { data: result };
@@ -86,7 +86,7 @@ export async function startPractice(actor: Actor, input: unknown): Promise<Pract
   const denied = learnerOnly(actor);
   if (denied) return denied;
   const parsed = startPracticeSchema.safeParse(input);
-  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Please choose a practice from your list." } };
   const { setId, replaceAttemptId } = parsed.data;
   const result = await repository.startPublishedPractice(actor.id, setId, replaceAttemptId);
   return "error" in result ? { error: { code: result.error, message: preparationMessages[result.error] } } : { data: result };
@@ -96,16 +96,16 @@ export async function getOpenPracticeAttempt(actor: Actor, input: unknown): Prom
   const denied = learnerOnly(actor);
   if (denied) return denied;
   const parsed = z.object({ setId: preparePracticeSchema.shape.setId, attemptId: z.string().uuid() }).strict().safeParse(input);
-  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Please choose a practice from your list." } };
   const attempt = await repository.getOpenPracticeAttempt(actor.id, parsed.data.setId, parsed.data.attemptId);
-  return attempt ? { data: attempt } : { error: { code: "SET_NOT_FOUND", message: "This practice activity is no longer available." } };
+  return attempt ? { data: attempt } : { error: { code: "SET_NOT_FOUND", message: "This practice is no longer available. Please choose another one." } };
 }
 
 const playerMessages = {
-  ATTEMPT_SCOPE_MISMATCH: "This practice activity is no longer available.",
-  ATTEMPT_FINALISED: "This practice activity has already been submitted.",
-  ATTEMPT_REVISION_CONFLICT: "Your practice changed elsewhere. Reload the latest version.",
-  ITEM_INVALID: "This question is unavailable.",
+  ATTEMPT_SCOPE_MISMATCH: "This practice is no longer available. Please choose another one.",
+  ATTEMPT_FINALISED: "You already submitted this practice.",
+  ATTEMPT_REVISION_CONFLICT: "This practice changed on another device. Choose Load latest or Leave.",
+  ITEM_INVALID: "This question is not working. Please choose another practice.",
 } as const;
 function playerResult<T extends object>(result: T | { error: keyof typeof playerMessages }): PracticeResult<T> {
   return "error" in result ? { error: { code: result.error, message: playerMessages[result.error] } } : { data: result };
@@ -114,7 +114,7 @@ export async function getPracticePlayer(actor: Actor, input: unknown): Promise<P
   const denied = learnerOnly(actor);
   if (denied) return denied;
   const parsed = practiceAttemptSchema.safeParse(input);
-  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Please choose a practice from your list." } };
   return playerResult<PracticePlayer>(await repository.getPracticePlayer(actor.id, parsed.data.setId, parsed.data.attemptId));
 }
 export async function savePracticeResponse(actor: Actor, input: unknown): Promise<PracticeResult<{ revision: number }>> {
@@ -147,7 +147,7 @@ export async function getSubmittedPracticeReview(actor: Actor, input: unknown): 
   const denied = learnerOnly(actor);
   if (denied) return denied;
   const parsed = practiceAttemptSchema.safeParse(input);
-  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Choose a valid practice activity." } };
+  if (!parsed.success) return { error: { code: "INPUT_INVALID", message: "Please choose a practice from your list." } };
   const result = await repository.getSubmittedPracticeReview(actor.id, parsed.data.setId, parsed.data.attemptId);
   if ("error" in result) return { error: { code: result.error, message: playerMessages[result.error] } };
   const groups = new Map<string, { automaticOutcome: ReviewItemOutcome }[]>();

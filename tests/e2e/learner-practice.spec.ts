@@ -5,7 +5,7 @@ import { approveSeededSet, e2eDatabaseUrl, publishSeededSet, resetE2eSchema } fr
 
 const id = () => crypto.randomUUID();
 const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() } };
-const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id() };
+const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id() };
 const tokens = Object.fromEntries(Object.keys(learners).map((key) => [key, id()])) as Record<keyof typeof learners, string>;
 const policy = (canonicalAnswer: string | boolean, inputKind: string) => ({ canonicalAnswer, acceptedAnswers: [], inputKind, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId: fixture.policyId, version: 1 });
 
@@ -75,7 +75,7 @@ const button = (page: Page, name: string) => page.getByRole("button", { name, ex
 async function submitAndReview(page: Page) {
   await button(page, "Submit practice").click();
   await expect(page.getByRole("heading", { name: "Ready to submit?" })).toBeVisible();
-  await button(page, "Submit anyway").click();
+  await page.getByRole("button", { name: /^Submit (anyway|now)$/ }).click();
   await expect(page).toHaveURL(/\/review$/);
   return page.locator("article.review-item");
 }
@@ -85,13 +85,13 @@ test("answers given offline are saved after reconnecting and appear in the submi
   try {
     await context.setOffline(true);
     await button(page, "False").click();
-    await expect(page.getByText(/1 answer is waiting to be saved/)).toBeVisible();
+    await expect(page.getByText(/1 answer is not saved yet/)).toBeVisible();
     await button(page, "Next").click();
     await button(page, "dog").click();
-    await expect(page.getByText(/2 answers are waiting to be saved/)).toBeVisible();
+    await expect(page.getByText(/2 answers are not saved yet/)).toBeVisible();
 
     await context.setOffline(false);
-    await expect(page.getByText(/waiting to be saved/)).toHaveCount(0);
+    await expect(page.getByText(/not saved yet/)).toHaveCount(0);
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
 
     const reviewed = await submitAndReview(page);
@@ -117,7 +117,7 @@ test("answers recovered from the device draft after a reload are saved before su
     await button(page, "Next").click();
     await context.setOffline(true);
     await button(page, "cat").click();
-    await expect(page.getByText(/1 answer is waiting to be saved/)).toBeVisible();
+    await expect(page.getByText(/1 answer is not saved yet/)).toBeVisible();
     // Leave while offline once the device draft holds the answer, then return online.
     await expect.poll(() => page.evaluate(() => new Promise<string>((resolve) => {
       const opened = indexedDB.open("cambridgeyle-open-attempt-drafts");
@@ -128,8 +128,8 @@ test("answers recovered from the device draft after a reload are saved before su
     await context.setOffline(false);
     const returned = await context.newPage();
     await returned.goto(attemptUrl);
-    await expect(returned.getByText("Your recovered answers are ready to continue.").or(returned.getByText("Saved.", { exact: true }))).toBeVisible();
-    await expect(returned.getByText(/waiting to be saved/)).toHaveCount(0);
+    await expect(returned.getByText("Welcome back. Your answers are here.").or(returned.getByText("Saved.", { exact: true }))).toBeVisible();
+    await expect(returned.getByText(/not saved yet/)).toHaveCount(0);
 
     const reviewed = await submitAndReview(returned);
     await expect(reviewed.nth(0)).toContainText("Your answer: True");
@@ -144,7 +144,7 @@ test("a typed note is included when the learner submits without leaving the fiel
   try {
     await button(page, "Next").click();
     await button(page, "Next").click();
-    await page.getByLabel("Type the word, name or number you hear").fill("Tom");
+    await page.getByLabel("Your answer").fill("Tom");
     const reviewed = await submitAndReview(page);
     await expect(reviewed.nth(2)).toContainText("Your answer: Tom");
     await expect(reviewed.nth(2)).toContainText("You got this one right.");
@@ -157,7 +157,7 @@ test("a learner practises a completed set again and can start an open attempt ag
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   await context.addCookies([{ name: "cambridgeyle_session", value: tokens.repeat, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
   const page = await context.newPage();
-  const card = () => page.getByRole("region", { name: "Published practice activities" }).getByRole("article").filter({ hasText: "Pet words" });
+  const card = () => page.getByRole("region", { name: "Practice to choose" }).getByRole("article").filter({ hasText: "Pet words" });
   const startFromPreparation = async (label: string) => {
     await expect(button(page, label)).toBeEnabled();
     await button(page, label).click();
@@ -193,6 +193,37 @@ test("a learner practises a completed set again and can start an open attempt ag
 
     await page.goto(reviewUrl);
     await expect(page.locator("article.review-item").nth(0)).toContainText("Your answer: True");
+  } finally {
+    await context.close();
+  }
+});
+
+test("the player announces question changes, exposes selected answers and states the expected input", async ({ browser }) => {
+  const { context, page } = await openAttempt(browser, "accessible");
+  try {
+    const trueChoice = button(page, "True");
+    await expect(trueChoice).toHaveAttribute("aria-pressed", "false");
+    await trueChoice.click();
+    await expect(trueChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(button(page, "False")).toHaveAttribute("aria-pressed", "false");
+    const box = await trueChoice.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(56);
+
+    await button(page, "Next").click();
+    await expect(page.getByRole("heading", { name: "Question 2 of 3" })).toBeFocused();
+    await button(page, "Next").click();
+    await expect(page.getByRole("heading", { name: "Question 3 of 3" })).toBeFocused();
+    await expect(page.getByLabel("Your answer")).toHaveAccessibleDescription("Write one word.");
+    await expect(button(page, "Play the sound")).toBeVisible();
+    const attemptId = page.url().split("/attempt/")[1];
+    const payload = await (await page.request.get(`/api/practice/attempt/${attemptId}?setId=${fixture.setId}`)).json() as { data: { items: { engine: string; options: string[]; answerHint?: string }[] } };
+    expect(payload.data.items.find((entry) => entry.engine === "audio_note_taking")).toMatchObject({ options: [], answerHint: "Write one word." });
+
+    await button(page, "Submit practice").click();
+    await expect(page.getByRole("heading", { name: "Ready to submit?" })).toBeFocused();
+    await expect(page.getByText("You answered 1 of 3 questions. 2 questions have no answer yet. When you submit, you can check your answers.")).toBeVisible();
+    await button(page, "Review questions").click();
+    await expect(page.getByRole("heading", { name: "Question 2 of 3" })).toBeFocused();
   } finally {
     await context.close();
   }

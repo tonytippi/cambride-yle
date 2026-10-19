@@ -208,7 +208,7 @@ test("an admin provisions a learner who signs in and starts a ready published pr
     await learnerPage.getByRole("button", { name: "Sign in" }).click();
     await expect(learnerPage).toHaveURL(/\/learner$/);
     await learnerPage.getByText("Animal listening").locator("..").getByRole("link", { name: "Start" }).click();
-    await expect(learnerPage.getByText("Image").locator("..").getByText("Ready")).toBeVisible();
+    await expect(learnerPage.getByText("Picture", { exact: true }).locator("..").getByText("Ready")).toBeVisible();
     await learnerPage.getByRole("button", { name: "Start" }).click();
     await expect(learnerPage).toHaveURL(new RegExp(`/learner/practice/${fixture.setId}/attempt/`));
     await expect(learnerPage.getByRole("heading", { name: "Animal listening" })).toBeVisible();
@@ -235,7 +235,7 @@ test("a published word-bank set without media prepares and starts", async ({ bro
     await learnerPage.goto("/learner");
     const card = learnerPage.getByText("Word bank practice").locator("..");
     await card.getByRole("link", { name: "Start" }).click();
-    await expect(learnerPage.getByText("No essential media is required for this practice.")).toBeVisible();
+    await expect(learnerPage.getByText("This practice has no pictures or sounds to get ready.")).toBeVisible();
     const start = await learnerPage.request.post("/api/practice/start", { data: { setId: fixture.clozeSetId } });
     expect(start.status()).toBe(201);
     expect((await start.json()).data.setId).toBe(fixture.clozeSetId);

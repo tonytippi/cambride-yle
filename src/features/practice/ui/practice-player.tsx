@@ -29,6 +29,10 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const [stale, setStale] = useState(false);
   const [staleResponses, setStaleResponses] = useState<Record<string, DraftResponse>>({});
   const [unsynced, setUnsynced] = useState(0);
+  const [played, setPlayed] = useState<ReadonlySet<string>>(new Set());
+  const questionHeading = useRef<HTMLHeadingElement>(null);
+  const confirmationHeading = useRef<HTMLHeadingElement>(null);
+  const navigated = useRef(false);
   const pending = useRef(new Map<string, DraftResponse>());
   const staleRef = useRef(false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
@@ -45,13 +49,18 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
 
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { staleRef.current = stale; }, [stale]);
+  // Move focus to the new question (not on first load) and to the confirmation, so the change is announced.
+  useEffect(() => { if (navigated.current) questionHeading.current?.focus(); }, [position]);
+  useEffect(() => { if (confirmingSubmit) confirmationHeading.current?.focus(); }, [confirmingSubmit]);
+  const goTo = (next: number) => { navigated.current = true; setPosition(next); };
+  const markPlayed = (mediaId: string) => setPlayed((current) => new Set(current).add(mediaId));
   const enqueue = <T,>(task: () => Promise<T>) => { const next = mutationQueue.current.then(task); mutationQueue.current = next.then(() => undefined, () => undefined); return next; };
   const markPending = (itemId: string, value: DraftResponse) => { pending.current.set(itemId, value); setUnsynced(pending.current.size); };
   const writeDraft = async (next: PracticePlayerData = playerRef.current, state: PracticeRecoveryState = online() ? "saved" : "offline") => {
     const write = draftQueue.current.then(() => openAttemptDraftStore.write(createOpenAttemptDraft(accountId, next.attemptId, next.setVersionId, next.revision, responses(next))));
     draftQueue.current = write.catch(() => undefined);
     try { await write; setRecovery(state); }
-    catch { setRecovery("unsaved"); setNotice("Your visible answer is not saved for recovery. Try again when browser storage is available."); }
+    catch { setRecovery("unsaved"); setNotice("This device cannot keep a copy of your answers. Please keep this page open."); }
   };
 
   useEffect(() => {
@@ -66,14 +75,14 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     if (!hydrated.current) { hydrated.current = true; void openAttemptDraftStore.read(draftKey).then(async (draft) => {
       if (!draft) return;
       if (!sameIdentityDraft(draft, accountId, initialPlayer.attemptId, initialPlayer.setVersionId)) { await openAttemptDraftStore.delete(draftKey).catch(() => undefined); return; }
-      if (!usableDraft(draft, accountId, initialPlayer.attemptId, initialPlayer.setVersionId, initialPlayer.revision)) { setStaleResponses(draft.responses); setStale(true); setRecovery("stale"); setNotice("Saved recovery work does not match the latest practice. Choose Reload latest or Leave."); return; }
+      if (!usableDraft(draft, accountId, initialPlayer.attemptId, initialPlayer.setVersionId, initialPlayer.revision)) { setStaleResponses(draft.responses); setStale(true); setRecovery("stale"); setNotice("This practice changed on another device. Choose Load latest or Leave."); return; }
       if (!shouldApplyDraftHydration(hydrationEpoch, editEpoch.current)) return;
       const recovered = { ...playerRef.current, items: playerRef.current.items.map((entry) => draft.responses[entry.id] === undefined ? entry : { ...entry, response: draft.responses[entry.id] ?? undefined }) };
       playerRef.current = recovered; setPlayer(recovered);
       for (const [itemId, value] of unsyncedResponses(Object.fromEntries(initialPlayer.items.map((entry) => [entry.id, entry.response])), draft.responses)) markPending(itemId, value);
-      setRecovery("saved"); setNotice("Your recovered answers are ready to continue.");
+      setRecovery("saved"); setNotice("Welcome back. Your answers are here.");
       if (pending.current.size) void flushRef.current();
-    }).catch(() => { setRecovery("unsaved"); setNotice("Browser recovery storage is unavailable. Your visible answers remain here."); }); }
+    }).catch(() => { setRecovery("unsaved"); setNotice("This device cannot keep a copy of your answers. Please keep this page open."); }); }
     return () => { clearTimeout(connection); controller?.postMessage({ type: "cambridgeyle-clear-account" }); window.removeEventListener("offline", offline); window.removeEventListener("online", online); };
   }, [accountId, draftKey, initialPlayer]);
 
@@ -81,16 +90,16 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     try {
       const response = await fetch(`/api/practice/attempt/${player.attemptId}?setId=${player.setId}`, { cache: "no-store" });
       let result: { data?: PracticePlayerData; error?: { message?: string } };
-      try { result = await response.json() as { data?: PracticePlayerData; error?: { message?: string } }; } catch { setNotice("The server gave an unexpected response. Please try again."); return; }
-      if (!result.data) { setNotice(result.error?.message ?? "The latest practice could not be loaded. Please try again."); return; }
+      try { result = await response.json() as { data?: PracticePlayerData; error?: { message?: string } }; } catch { setNotice("Something went wrong. Please try again."); return; }
+      if (!result.data) { setNotice(result.error?.message ?? "We could not load your practice. Please try again."); return; }
       await openAttemptDraftStore.delete(draftKey);
       pending.current.clear(); setUnsynced(0); staleRef.current = false;
       const latest = result.data;
-      setPlayer(latest); setPosition((current) => Math.min(current, latest.items.length - 1)); setStaleResponses({}); setStale(false); setRecovery(online() ? "online" : "offline"); setNotice("The latest saved practice has been loaded.");
-    } catch { setNotice("The latest practice could not be loaded. Please check your connection and try again."); }
+      setPlayer(latest); setPosition((current) => Math.min(current, latest.items.length - 1)); setStaleResponses({}); setStale(false); setRecovery(online() ? "online" : "offline"); setNotice("Here is your latest practice.");
+    } catch { setNotice("We could not load your practice. Check the internet and try again."); }
   };
 
-  const markStale = () => { staleRef.current = true; setStale(true); setRecovery("stale"); setNotice("Your visible work was not merged. Choose Reload latest or Leave."); };
+  const markStale = () => { staleRef.current = true; setStale(true); setRecovery("stale"); setNotice("This practice changed on another device. Choose Load latest or Leave."); };
   /* A revision conflict is harmless when the server already holds every pending answer, e.g. a save that landed just before a reload. */
   const reconcile = async () => {
     try {
@@ -105,17 +114,17 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
     } catch { return false; }
   };
   const request = async (path: "response" | "playback", body: Record<string, unknown>, currentItemId: string, onConflict: () => Promise<boolean> = async () => false) => {
-    if (staleRef.current || !online()) { if (!online()) { setRecovery("offline"); setNotice("You are offline. Your practice remains open. Reconnect before saving to the server."); } return undefined; }
+    if (staleRef.current || !online()) { if (!online()) { setRecovery("offline"); setNotice("No internet right now. Your answer is kept on this device."); } return undefined; }
     try {
       const current = playerRef.current;
       const response = await fetch(`/api/practice/attempt/${current.attemptId}/${path}`, { method: path === "response" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setId: current.setId, itemId: currentItemId, expectedRevision: current.revision, ...body }) });
       let result: ApiResult;
-      try { result = await response.json() as ApiResult; } catch { setNotice("The server gave an unexpected response. Please try again."); return undefined; }
+      try { result = await response.json() as ApiResult; } catch { setNotice("Something went wrong. Please try again."); return undefined; }
       if (result.data) return result.data;
       if (result.error?.code === "ATTEMPT_REVISION_CONFLICT" && await onConflict()) return undefined;
       if (result.error?.code === "ATTEMPT_REVISION_CONFLICT" || result.error?.code === "ATTEMPT_SCOPE_MISMATCH" || result.error?.code === "ATTEMPT_FINALISED") { markStale(); return undefined; }
-      setNotice(result.error?.message ?? "Your change could not be saved. Please try again.");
-    } catch { setRecovery("offline"); setNotice("You are offline. Your visible answer is kept for recovery. Reconnect and try again."); }
+      setNotice(result.error?.message ?? "Your answer did not save. Please try again.");
+    } catch { setRecovery("offline"); setNotice("No internet right now. Your answer is kept on this device."); }
     return undefined;
   };
 
@@ -146,50 +155,62 @@ export function PracticePlayer({ player: initialPlayer, accountId }: Props) {
   const save = async (value: DraftResponse) => { setLocal(item.id, value); await flush(); };
   const replay = async (mediaId: string) => {
     const audio = audioRefs.current.get(mediaId);
-    if (!audio) { setNotice("This audio is not ready. Reconnect or try again."); return; }
-    if (!online()) { try { await audio.play(); setRecovery("offline"); setNotice("Playing cached audio. Reconnect for server playback evidence."); } catch { setNotice("This audio is paused. Reconnect or try again."); } return; }
+    if (!audio) { setNotice("The sound is not ready yet. Please try again."); return; }
+    if (!online()) { try { await audio.play(); setRecovery("offline"); setNotice("Playing the sound."); markPlayed(mediaId); } catch { setNotice("The sound could not play. Please try again."); } return; }
     const itemId = item.id;
     const mutation = mutationQueue.current.then(async () => {
-      try { await audio.play(); } catch { setNotice("This audio could not play. Please try again."); return; }
+      try { await audio.play(); markPlayed(mediaId); } catch { setNotice("The sound could not play. Please try again."); return; }
       const data = await request("playback", { mediaId }, itemId);
-      if (data) { const saved = { ...playerRef.current, revision: data.revision }; playerRef.current = saved; setPlayer(saved); await writeDraft(saved); setNotice("Playing audio."); }
+      if (data) { const saved = { ...playerRef.current, revision: data.revision }; playerRef.current = saved; setPlayer(saved); await writeDraft(saved); setNotice("Playing the sound."); }
     });
     mutationQueue.current = mutation.catch(() => undefined);
     await mutation;
   };
   const leave = async (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); if (stale) await openAttemptDraftStore.delete(draftKey); else await writeDraft(playerRef.current); await draftQueue.current; router.push("/learner"); };
   const submit = async () => {
-    if (!online()) { setRecovery("offline"); setNotice("You are offline. Your practice remains open. Reconnect before submitting."); return; }
-    if (!await flush()) { setConfirmingSubmit(false); if (!staleRef.current) setNotice("Some answers are not saved yet. Check your connection and try again."); return; }
+    if (!online()) { setRecovery("offline"); setNotice("No internet right now. Connect again, then submit your practice."); return; }
+    if (!await flush()) { setConfirmingSubmit(false); if (!staleRef.current) setNotice("Some answers are not saved yet. Check the internet and try again."); return; }
     setSubmitting(true);
     try {
       const current = playerRef.current;
       submitKey.current ??= crypto.randomUUID();
       const result = await fetch(`/api/practice/attempt/${current.attemptId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setId: current.setId, expectedRevision: current.revision, idempotencyKey: submitKey.current }) }).then((response) => response.json() as Promise<ApiResult>);
       if (result.data) { await openAttemptDraftStore.delete(draftKey); router.push(`/learner/practice/${current.setId}/attempt/${current.attemptId}/review`); return; }
-      if (result.error?.code === "ATTEMPT_REVISION_CONFLICT" || result.error?.code === "ATTEMPT_SCOPE_MISMATCH" || result.error?.code === "ATTEMPT_FINALISED") { staleRef.current = true; setStale(true); setRecovery("stale"); setConfirmingSubmit(false); setNotice("Your practice changed elsewhere. Reload the latest version or leave."); return; }
-      setNotice(result.error?.message ?? "Your practice could not be submitted. Please try again.");
-    } catch { setNotice("Your practice could not be submitted. Please check your connection and try again."); }
+      if (result.error?.code === "ATTEMPT_REVISION_CONFLICT" || result.error?.code === "ATTEMPT_SCOPE_MISMATCH" || result.error?.code === "ATTEMPT_FINALISED") { staleRef.current = true; setStale(true); setRecovery("stale"); setConfirmingSubmit(false); setNotice("This practice changed on another device. Choose Load latest or Leave."); return; }
+      setNotice(result.error?.message ?? "We could not submit your practice. Please try again.");
+    } catch { setNotice("We could not submit your practice. Check the internet and try again."); }
     finally { setSubmitting(false); }
   };
   const openConfirmation = async () => {
     if (!online()) { await submit(); return; }
-    if (!await flush()) { if (!staleRef.current) setNotice("Some answers are not saved yet. Check your connection and try again."); return; }
+    if (!await flush()) { if (!staleRef.current) setNotice("Some answers are not saved yet. Check the internet and try again."); return; }
     setConfirmingSubmit(true);
   };
   const visibleResponse = stale && staleResponses[item.id] !== undefined ? staleResponses[item.id] : item.response;
   const pictures = item.media.filter((media) => media.type === "image");
   const audio = item.media.filter((media) => media.type === "audio");
-  const choice = (value: string | boolean, label: string) => <button key={String(value)} type="button" className={`choice ${visibleResponse === value ? "selected" : ""}`} disabled={submitting || stale} onClick={() => void save(value)}>{label}</button>;
-  const recoveryMessage: Record<PracticeRecoveryState, string> = { online: "Online. Your practice can save to the server.", offline: "Offline. Your practice remains open; reconnect before submitting.", saved: "Recovery copy saved on this device.", unsaved: "Recovery copy is unavailable. Your visible answers are still here.", stale: "Recovery copy needs your decision. It has not changed the server practice." };
-  return <main className="practice-player shell"><section className="player-card"><p className="eyebrow">Question {position + 1} of {player.items.length}</p><h1>{player.title}</h1><p className={`recovery-state ${recovery}`} role="status" aria-live="polite">{recoveryMessage[recovery]}{unsynced > 0 && ` ${unsynced === 1 ? "1 answer is" : `${unsynced} answers are`} waiting to be saved.`} {recovery === "unsaved" && <button type="button" className="secondary inline-action" onClick={() => void writeDraft(playerRef.current)}>Retry</button>}</p>{stale && <div className="recovery-actions"><button type="button" className="secondary" onClick={() => void reload()}>Reload latest</button><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Leave</a></div>}<p>{item.prompt}</p>
+  const promptId = `prompt-${item.id}`;
+  const hintId = `hint-${item.id}`;
+  const choice = (value: string | boolean, label: string) => <button key={String(value)} type="button" aria-pressed={visibleResponse === value} className={`choice ${visibleResponse === value ? "selected" : ""}`} disabled={submitting || stale} onClick={() => void save(value)}>{visibleResponse === value && <span className="choice-mark" aria-hidden="true">✓ </span>}{label}</button>;
+  const recoveryMessage: Record<PracticeRecoveryState, string> = { online: "Your answers save as you go.", saved: "Your answers save as you go.", offline: "No internet right now. Your answers stay on this device.", unsaved: "This device cannot keep a copy of your answers. Please keep this page open.", stale: "This practice changed on another device." };
+  const answeredCount = player.items.filter((entry) => entry.response !== undefined).length;
+  const unansweredCount = player.items.length - answeredCount;
+  const reviewQuestions = () => { setConfirmingSubmit(false); const first = player.items.findIndex((entry) => entry.response === undefined); goTo(first === -1 ? 0 : first); };
+  return <main className="practice-player shell"><section className="player-card">
+    <h1>{player.title}</h1>
+    <h2 className="question-progress" ref={questionHeading} tabIndex={-1}>Question {position + 1} of {player.items.length}</h2>
+    <p className={`recovery-state ${recovery}`} role="status" aria-live="polite">{recoveryMessage[recovery]}{unsynced > 0 && (recovery === "offline" || recovery === "unsaved" ? ` ${unsynced === 1 ? "1 answer is" : `${unsynced} answers are`} not saved yet.` : " Saving…")} {recovery === "unsaved" && <button type="button" className="secondary inline-action" onClick={() => void writeDraft(playerRef.current)}>Try again</button>}</p>
+    {stale && <div className="recovery-actions"><button type="button" className="secondary" onClick={() => void reload()}>Load latest</button><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Leave</a></div>}
+    <p className="question-prompt" id={promptId}>{item.prompt}</p>
     {item.engine !== "audio_picture_choice" && pictures.length > 0 && <div className="picture-stimuli">{pictures.map((media) => <img key={media.id} src={mediaUrl(media)} alt={media.altText} />)}</div>}
-    {item.engine === "picture_true_false" && <div className="choice-row">{choice(true, "True")}{choice(false, "False")}</div>}
-    {item.engine === "picture_yes_no" && <div className="choice-row">{choice("yes", "Yes")}{choice("no", "No")}</div>}
-    {item.engine === "audio_picture_choice" && <div className="picture-choices">{pictures.map((media) => <button type="button" className={`picture-choice ${visibleResponse === media.choiceLabel ? "selected" : ""}`} key={media.id} aria-label={media.choiceLabel} disabled={submitting || stale} onClick={() => void save(media.choiceLabel!)}><img src={mediaUrl(media)} alt={media.altText} /></button>)}</div>}
-    {item.engine === "audio_note_taking" && <label className="answer-field">Type the word, name or number you hear<input value={typeof visibleResponse === "string" || typeof visibleResponse === "number" ? visibleResponse : ""} disabled={stale} onChange={(event) => setLocal(item.id, event.target.value || null)} onBlur={() => void flush()} /></label>}
-    {item.engine === "word_bank_cloze" && <><label className="answer-field">Choose a word from the word bank. You can change it before you submit.<input value={typeof visibleResponse === "string" ? visibleResponse : ""} readOnly /></label><div className="word-bank">{item.options.map((option) => choice(option, option))}</div></>}
-    {audio.map((media) => <span key={media.id}><audio ref={(element) => { if (element) audioRefs.current.set(media.id, element); else audioRefs.current.delete(media.id); }} preload="metadata" src={mediaUrl(media)} /><button type="button" className="secondary replay" disabled={submitting || stale} onClick={() => void replay(media.id)}>Replay audio</button></span>)}
-    <p role="status" aria-live="polite">{notice}</p>{confirmingSubmit && <section className="submit-confirmation" aria-labelledby="submit-heading"><h2 id="submit-heading">Ready to submit?</h2><p>{player.items.filter((entry) => entry.response !== undefined).length} answered and {player.items.filter((entry) => entry.response === undefined).length} unanswered.</p><button type="button" className="secondary" onClick={() => setConfirmingSubmit(false)}>Review questions</button><button type="button" disabled={submitting || stale} onClick={() => void submit()}>Submit anyway</button></section>}<div className="player-actions"><button type="button" className="secondary" disabled={stale || position === 0} onClick={() => setPosition(position - 1)}>Previous</button><button type="button" disabled={stale || position === player.items.length - 1} onClick={() => setPosition(position + 1)}>Next</button>{!stale && <><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a><button type="button" disabled={submitting} onClick={() => void openConfirmation()}>Submit practice</button></>}</div>
+    {audio.length > 0 && <div className="audio-controls">{audio.map((media, index) => <span key={media.id}><audio ref={(element) => { if (element) audioRefs.current.set(media.id, element); else audioRefs.current.delete(media.id); }} preload="metadata" src={mediaUrl(media)} /><button type="button" className="secondary replay" disabled={submitting || stale} onClick={() => void replay(media.id)}>{played.has(media.id) ? "Play again" : "Play the sound"}{audio.length > 1 ? ` ${index + 1}` : ""}</button></span>)}</div>}
+    {item.engine === "picture_true_false" && <div className="choice-row" role="group" aria-labelledby={promptId}>{choice(true, "True")}{choice(false, "False")}</div>}
+    {item.engine === "picture_yes_no" && <div className="choice-row" role="group" aria-labelledby={promptId}>{choice("yes", "Yes")}{choice("no", "No")}</div>}
+    {item.engine === "audio_picture_choice" && <div className="picture-choices" role="group" aria-labelledby={promptId}>{pictures.map((media) => <button type="button" aria-pressed={visibleResponse === media.choiceLabel} className={`picture-choice ${visibleResponse === media.choiceLabel ? "selected" : ""}`} key={media.id} aria-label={media.choiceLabel} disabled={submitting || stale} onClick={() => void save(media.choiceLabel!)}><img src={mediaUrl(media)} alt={media.altText} />{visibleResponse === media.choiceLabel && <span className="choice-mark" aria-hidden="true">✓</span>}</button>)}</div>}
+    {item.engine === "audio_note_taking" && <><label className="answer-field">Your answer<input aria-describedby={hintId} value={typeof visibleResponse === "string" || typeof visibleResponse === "number" ? visibleResponse : ""} disabled={stale} onChange={(event) => setLocal(item.id, event.target.value || null)} onBlur={() => void flush()} /></label><p className="answer-hint" id={hintId}>{item.answerHint ?? "Write what you hear."}</p></>}
+    {item.engine === "word_bank_cloze" && <><label className="answer-field">Your answer<input aria-describedby={hintId} value={typeof visibleResponse === "string" ? visibleResponse : ""} readOnly /></label><p className="answer-hint" id={hintId}>Tap a word from the box. You can change it before you finish.</p><div className="word-bank" role="group" aria-label="Word box">{item.options.map((option) => choice(option, option))}</div></>}
+    <p role="status" aria-live="polite">{notice}</p>
+    {confirmingSubmit && <section className="submit-confirmation" aria-labelledby="submit-heading"><h2 id="submit-heading" ref={confirmationHeading} tabIndex={-1}>Ready to submit?</h2><p>{unansweredCount ? `You answered ${answeredCount} of ${player.items.length} questions. ${unansweredCount === 1 ? "1 question has" : `${unansweredCount} questions have`} no answer yet.` : `You answered all ${player.items.length} questions.`} When you submit, you can check your answers.</p><button type="button" className="secondary" onClick={reviewQuestions}>Review questions</button><button type="button" disabled={submitting || stale} onClick={() => void submit()}>{unansweredCount ? "Submit anyway" : "Submit now"}</button></section>}
+    {!confirmingSubmit && <div className="player-actions"><button type="button" className="secondary" disabled={stale || position === 0} onClick={() => goTo(position - 1)}>Previous</button><button type="button" disabled={stale || position === player.items.length - 1} onClick={() => goTo(position + 1)}>Next</button>{!stale && <><a className="practice-action secondary-link" href="/learner" onClick={(event) => void leave(event)}>Save and leave</a><button type="button" disabled={submitting} onClick={() => void openConfirmation()}>Submit practice</button></>}</div>}
   </section></main>;
 }

@@ -9,5 +9,5 @@ export async function POST(request: NextRequest) {
     const result = await startPractice(actor, await request.json());
     const status = "error" in result ? result.error.code === "FORBIDDEN" ? 403 : result.error.code === "INPUT_INVALID" ? 400 : 409 : 201;
     return NextResponse.json(result, { status, headers: { "Cache-Control": "no-store" } });
-  } catch { return NextResponse.json({ error: { code: "SET_NOT_FOUND", message: "This practice activity is no longer available." } }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
+  } catch { return NextResponse.json({ error: { code: "SET_NOT_FOUND", message: "This practice is no longer available. Please choose another one." } }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
 }

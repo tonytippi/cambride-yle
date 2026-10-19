@@ -35,7 +35,8 @@ export type PracticeStart = { attemptId: string; setId: string; setVersionId: st
 export type OpenPracticeAttempt = { attemptId: string; setId: string; setVersionId: string; revision: number };
 export const learnerEngines = ["picture_true_false", "picture_yes_no", "audio_picture_choice", "audio_note_taking", "word_bank_cloze"] as const;
 export type LearnerEngine = (typeof learnerEngines)[number];
-export type PracticePlayerItem = { id: string; position: number; engine: LearnerEngine; prompt: string; options: string[]; response?: string | boolean | number; media: { id: string; mediaKey: string; type: "audio" | "image"; altText?: string; choiceLabel?: string }[] };
+/* answerHint describes the expected input (from the policy kind and word limit) and never the answer itself. */
+export type PracticePlayerItem = { id: string; position: number; engine: LearnerEngine; prompt: string; options: string[]; answerHint?: string; response?: string | boolean | number; media: { id: string; mediaKey: string; type: "audio" | "image"; altText?: string; choiceLabel?: string }[] };
 export type PracticePlayer = OpenPracticeAttempt & { title: string; items: PracticePlayerItem[] };
 export type PracticeRecoveryState = "online" | "offline" | "saved" | "unsaved" | "stale";
 export const practiceAttemptSchema = z.object({ setId: practiceSetIdSchema, attemptId: z.string().uuid() }).strict();

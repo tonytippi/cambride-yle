@@ -139,16 +139,25 @@ const safeMedia = (type: string, accessibility: unknown) => {
   return type === "audio" || (type === "image" && altText) ? { altText, choiceLabel } : undefined;
 };
 
+const answerHint = (policy: unknown) => {
+  const { inputKind, maxWords } = (policy ?? {}) as { inputKind?: string; maxWords?: number };
+  if (inputKind === "number") return "Write one number.";
+  if (inputKind === "name") return maxWords && maxWords > 1 ? `Write the name. Use up to ${maxWords} words.` : "Write one name.";
+  return maxWords && maxWords > 1 ? `Write up to ${maxWords} words.` : "Write one word.";
+};
 export async function getPracticePlayer(learnerId: string, setId: string, attemptId: string, db: Database = database): Promise<PracticePlayer | { error: "ATTEMPT_SCOPE_MISMATCH" | "ATTEMPT_FINALISED" | "ITEM_INVALID" }> {
   const scoped = (await db.select({ attemptId: practiceAttempts.id, setId: practiceAttempts.practiceSetId, setVersionId: practiceAttempts.practiceSetVersionId, revision: practiceAttempts.revision, status: practiceAttempts.status, title: practiceSets.title }).from(practiceAttempts).innerJoin(practiceSets, eq(practiceSets.id, practiceAttempts.practiceSetVersionId)).where(and(eq(practiceAttempts.id, attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
   if (!scoped || scoped.setId !== setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
   if (scoped.status !== "open") return { error: "ATTEMPT_FINALISED" };
-  const items = await db.select({ id: practiceSetItems.id, position: practiceSetItems.position, engine: practiceSetItems.engine, prompt: practiceSetItems.renderedPrompt, options: practiceSetItems.renderedOptions }).from(practiceSetItems).where(eq(practiceSetItems.practiceSetId, scoped.setVersionId)).orderBy(practiceSetItems.position);
+  const items = await db.select({ id: practiceSetItems.id, position: practiceSetItems.position, engine: practiceSetItems.engine, prompt: practiceSetItems.renderedPrompt, options: practiceSetItems.renderedOptions, answerPolicy: practiceSetItems.answerPolicy }).from(practiceSetItems).where(eq(practiceSetItems.practiceSetId, scoped.setVersionId)).orderBy(practiceSetItems.position);
   if (!items.length || items.some((item) => !supportedEngines.has(item.engine as LearnerEngine) || !safeOptions(item.options))) return { error: "ITEM_INVALID" };
   const itemIds = items.map((item) => item.id);
   const [media, responses] = await Promise.all([db.select({ id: practiceSetItemMedia.id, itemId: practiceSetItemMedia.practiceSetItemId, type: practiceSetItemMedia.mediaType, contentHash: practiceSetItemMedia.contentHash, accessibility: practiceSetItemMedia.accessibilityMetadata }).from(practiceSetItemMedia).where(inArray(practiceSetItemMedia.practiceSetItemId, itemIds)), db.select({ itemId: practiceAttemptResponses.practiceSetItemId, value: practiceAttemptResponses.value }).from(practiceAttemptResponses).where(eq(practiceAttemptResponses.attemptId, attemptId))]);
-  const playerItems = items.map((item) => ({
-    ...item, engine: item.engine as LearnerEngine, options: safeOptions(item.options)!,
+  const playerItems = items.map(({ answerPolicy, ...item }) => ({
+    ...item, engine: item.engine as LearnerEngine,
+    // Note-taking never displays options, so they are not sent before submission.
+    options: item.engine === "audio_note_taking" ? [] : safeOptions(item.options)!,
+    answerHint: item.engine === "audio_note_taking" ? answerHint(answerPolicy) : undefined,
     response: responses.find((response) => response.itemId === item.id)?.value as string | boolean | number | undefined,
     media: media.filter((entry) => entry.itemId === item.id && (entry.type === "audio" || entry.type === "image")).map((entry) => ({ id: entry.id, mediaKey: `${entry.id}/${entry.contentHash}`, type: entry.type as "audio" | "image", ...safeMedia(entry.type, entry.accessibility) })),
   }));

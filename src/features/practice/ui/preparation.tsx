@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PracticePreparation, PracticeResult, PracticeStart } from "../domain/contracts";
 
-type AssetState = "Preparing" | "Ready" | "Unavailable";
+type AssetState = "Getting ready" | "Ready" | "Not working";
 
 function preload(asset: PracticePreparation["assets"][number]) {
   return new Promise<void>((resolve, reject) => {
@@ -18,16 +18,16 @@ function preload(asset: PracticePreparation["assets"][number]) {
 
 export function Preparation({ initial, replaceAttemptId }: { initial: PracticeResult<PracticePreparation>; replaceAttemptId?: string }) {
   const [preparation, setPreparation] = useState(initial);
-  const [states, setStates] = useState<Record<string, AssetState>>(() => "data" in initial ? Object.fromEntries(initial.data.assets.map((asset) => [asset.id, "Preparing"])) : {});
+  const [states, setStates] = useState<Record<string, AssetState>>(() => "data" in initial ? Object.fromEntries(initial.data.assets.map((asset) => [asset.id, "Getting ready"])) : {});
   const [starting, setStarting] = useState(false);
   const router = useRouter();
   const data = "data" in preparation ? preparation.data : undefined;
   async function checkAssets(current = data) {
     if (!current) return;
-    setStates(Object.fromEntries(current.assets.map((asset) => [asset.id, "Preparing"])));
+    setStates(Object.fromEntries(current.assets.map((asset) => [asset.id, "Getting ready"])));
     await Promise.all(current.assets.map(async (asset) => {
       try { await preload(asset); setStates((previous) => ({ ...previous, [asset.id]: "Ready" })); }
-      catch { setStates((previous) => ({ ...previous, [asset.id]: "Unavailable" })); }
+      catch { setStates((previous) => ({ ...previous, [asset.id]: "Not working" })); }
     }));
   }
   async function retry() {
@@ -42,7 +42,7 @@ export function Preparation({ initial, replaceAttemptId }: { initial: PracticeRe
       if ("error" in result) { setPreparation({ error: result.error }); return; }
       router.push(`/learner/practice/${data.setId}/attempt/${result.data.attemptId}`);
     } catch {
-      setPreparation({ error: { code: "MEDIA_UNAVAILABLE", message: "We could not start this practice activity. Please retry." } });
+      setPreparation({ error: { code: "MEDIA_UNAVAILABLE", message: "We could not start this practice. Please try again." } });
     } finally {
       setStarting(false);
     }
@@ -53,10 +53,10 @@ export function Preparation({ initial, replaceAttemptId }: { initial: PracticeRe
     const timer = setTimeout(() => {
       void Promise.all(data.assets.map(async (asset) => {
         try { await preload(asset); setStates((previous) => ({ ...previous, [asset.id]: "Ready" })); }
-        catch { setStates((previous) => ({ ...previous, [asset.id]: "Unavailable" })); }
+        catch { setStates((previous) => ({ ...previous, [asset.id]: "Not working" })); }
       }));
     }, 0);
     return () => clearTimeout(timer);
   }, [data]); // Browser readiness is UX-only; start is revalidated on the server.
-  return <main className="shell"><section className="preparation"><p className="eyebrow">Practice preparation</p><h1>{data?.title ?? "Practice activity"}</h1>{replaceAttemptId && data && <p className="notice" role="status">Starting again clears the answers you saved in this practice. Practice you already submitted stays the same.</p>}{"error" in preparation ? <><p className="error" role="alert">{preparation.error.message}</p><div className="preparation-actions"><button onClick={retry}>Retry</button><a className="practice-action secondary-link" href="/learner">Leave</a></div></> : <>{data!.assets.length ? <><p id="preparation-status" role="status">Check that essential media is ready before you start.</p><ul className="media-readiness" aria-describedby="preparation-status">{data!.assets.map((asset) => <li key={asset.id}><strong>{asset.type === "audio" ? "Audio" : "Image"}</strong><span aria-live="polite">{states[asset.id] ?? "Preparing"}</span></li>)}</ul></> : <p id="preparation-status" role="status">No essential media is required for this practice.</p>}<div className="preparation-actions"><button disabled={!ready || starting} onClick={start}>{starting ? "Starting..." : replaceAttemptId ? "Start again" : "Start"}</button>{data!.assets.length ? <button className="secondary" onClick={() => checkAssets()}>Check again</button> : null}<a className="practice-action secondary-link" href="/learner">Leave</a></div></>}</section></main>;
+  return <main className="shell"><section className="preparation"><p className="eyebrow">Practice preparation</p><h1>{data?.title ?? "Practice activity"}</h1>{replaceAttemptId && data && <p className="notice" role="status">Starting again clears the answers you saved in this practice. Practice you already submitted stays the same.</p>}{"error" in preparation ? <><p className="error" role="alert">{preparation.error.message}</p><div className="preparation-actions"><button onClick={retry}>Try again</button><a className="practice-action secondary-link" href="/learner">Leave</a></div></> : <>{data!.assets.length ? <><p id="preparation-status" role="status">Getting your pictures and sounds ready.</p><ul className="media-readiness" aria-describedby="preparation-status">{data!.assets.map((asset) => <li key={asset.id}><strong>{asset.type === "audio" ? "Sound" : "Picture"}</strong><span aria-live="polite">{states[asset.id] ?? "Getting ready"}</span></li>)}</ul></> : <p id="preparation-status" role="status">This practice has no pictures or sounds to get ready.</p>}<div className="preparation-actions"><button disabled={!ready || starting} onClick={start}>{starting ? "Starting..." : replaceAttemptId ? "Start again" : "Start"}</button>{data!.assets.length ? <button className="secondary" onClick={() => checkAssets()}>Try again</button> : null}<a className="practice-action secondary-link" href="/learner">Leave</a></div></>}</section></main>;
 }
