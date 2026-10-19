@@ -4,8 +4,8 @@ import postgres from "postgres";
 import { approveSeededSet, e2eDatabaseUrl, publishSeededSet, resetE2eSchema } from "./e2e-database";
 
 const id = () => crypto.randomUUID();
-const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() } };
-const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id(), offlineMedia: id(), switchFrom: id(), switchTo: id() };
+const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() }, soundsSetId: id(), soundItems: { yesNo: id(), choice: id() } };
+const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id(), offlineMedia: id(), switchFrom: id(), switchTo: id(), sounds: id() };
 const tokens = Object.fromEntries(Object.keys(learners).map((key) => [key, id()])) as Record<keyof typeof learners, string>;
 const policy = (canonicalAnswer: string | boolean, inputKind: string) => ({ canonicalAnswer, acceptedAnswers: [], inputKind, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId: fixture.policyId, version: 1 });
 
@@ -34,10 +34,9 @@ test.beforeAll(async () => {
           (${fixture.items.picture}, ${fixture.setId}, 1, ${fixture.questionId}, 'picture_true_false', 'The cat is on the mat.', '["True","False"]'::jsonb, ${tx.json(policy(true, "boolean"))}, '{}'::jsonb, ${tags}, '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
           (${fixture.items.cloze}, ${fixture.setId}, 2, ${fixture.questionId}, 'word_bank_cloze', 'I have a pet ____. It says miaow.', '["cat","dog","fish"]'::jsonb, ${tx.json(policy("cat", "word"))}, '{}'::jsonb, ${tags}, '{"altText":"Word bank"}'::jsonb, ${provenance}),
           (${fixture.items.notes}, ${fixture.setId}, 3, ${fixture.questionId}, 'audio_note_taking', 'Write the name of the cat.', '["Write the name"]'::jsonb, ${tx.json(policy("tom", "word"))}, '{}'::jsonb, ${tags}, '{"altText":"Listening"}'::jsonb, ${provenance})`;
-        // The E2E media server serves one owned asset; the audio entry reuses its object so server-side preparation succeeds.
         await tx`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES
           (${id()}, ${fixture.items.picture}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
-          (${id()}, ${fixture.items.notes}, ${fixture.mediaId}, 'audio', 'owned-e2e-image.png', 'owned-e2e-audio', '{"altText":"A child says the cat is called Tom"}'::jsonb, ${provenance})`;
+          (${id()}, ${fixture.items.notes}, ${fixture.mediaId}, 'audio', 'owned-e2e-audio.wav', 'owned-e2e-audio', '{"altText":"A child says the cat is called Tom"}'::jsonb, ${provenance})`;
       });
       // A set without audio, so the browser preparation step can complete for repeat-practice journeys.
       await tx`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${fixture.wordsSetId}, 'Pet words', 'reading_writing', '1', 300, ${JSON.stringify([fixture.targetId])}::jsonb, ${fixture.staffId})`;
@@ -50,6 +49,21 @@ test.beforeAll(async () => {
           (${fixture.wordItems.cloze}, ${fixture.wordsSetId}, 2, ${fixture.questionId}, 'word_bank_cloze', 'I have a pet ____. It says miaow.', '["cat","dog","fish"]'::jsonb, ${tx.json(policy("cat", "word"))}, '{}'::jsonb, ${tags}, '{"altText":"Word bank"}'::jsonb, ${provenance})`;
         await tx`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES (${id()}, ${fixture.wordItems.picture}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat on a mat"}'::jsonb, ${provenance})`;
       });
+      // Yes/no and audio picture choice, with a real audio asset so preparation runs in the browser.
+      await tx`INSERT INTO practice_sets (id, title, paper, part, estimated_duration_seconds, primary_target_ids, created_by) VALUES (${fixture.soundsSetId}, 'Animal sounds', 'listening', '3', 300, ${JSON.stringify([fixture.targetId])}::jsonb, ${fixture.staffId})`;
+      await approveSeededSet(tx, fixture.soundsSetId, fixture.staffId, fixture.approverId);
+      await publishSeededSet(tx, fixture.soundsSetId, async () => {
+        const tags = tx.json({ primaryTargetId: fixture.targetId, guidanceId: fixture.guidanceId });
+        const provenance = tx.json({ source: "Original", rightsReference: "Owned" });
+        await tx`INSERT INTO practice_set_items (id, practice_set_id, position, question_version_id, engine, rendered_prompt, rendered_options, answer_policy, feedback, tags, accessibility_metadata, provenance) VALUES
+          (${fixture.soundItems.yesNo}, ${fixture.soundsSetId}, 1, ${fixture.questionId}, 'picture_yes_no', 'Is the cat on the mat?', '["Yes","No"]'::jsonb, ${tx.json(policy("yes", "yes_no"))}, '{}'::jsonb, ${tags}, '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
+          (${fixture.soundItems.choice}, ${fixture.soundsSetId}, 2, ${fixture.questionId}, 'audio_picture_choice', 'Listen. Which animal is it?', '["cat","dog"]'::jsonb, ${tx.json(policy("cat", "choice"))}, ${tx.json({ postSubmitHint: { locale: "en-GB", message: "Listen for the animal's name." } })}, ${tags}, '{"altText":"Listening question"}'::jsonb, ${provenance})`;
+        await tx`INSERT INTO practice_set_item_media (id, practice_set_item_id, media_version_id, media_type, object_version, content_hash, accessibility_metadata, provenance) VALUES
+          (${id()}, ${fixture.soundItems.yesNo}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-image', '{"altText":"A cat on a mat"}'::jsonb, ${provenance}),
+          (${id()}, ${fixture.soundItems.choice}, ${fixture.mediaId}, 'audio', 'owned-e2e-audio.wav', 'owned-e2e-audio', '{"altText":"A child names an animal"}'::jsonb, ${provenance}),
+          (${id()}, ${fixture.soundItems.choice}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-cat', '{"altText":"A small animal","choiceLabel":"cat"}'::jsonb, ${provenance}),
+          (${id()}, ${fixture.soundItems.choice}, ${fixture.mediaId}, 'image', 'owned-e2e-image.png', 'owned-e2e-dog', '{"altText":"A bigger animal","choiceLabel":"dog"}'::jsonb, ${provenance})`;
+      });
     });
   } finally {
     await sql.end();
@@ -61,7 +75,7 @@ async function openAttempt(browser: Browser, learner: keyof typeof learners) {
   await context.addCookies([{ name: "cambridgeyle_session", value: tokens[learner], url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
   const page = await context.newPage();
   await page.goto("/learner");
-  // Start through the server contract; browser audio preloading cannot decode the shared image asset.
+  // Start through the server contract so these journeys begin directly in the player.
   const started = await page.request.post("/api/practice/start", { data: { setId: fixture.setId } });
   expect(started.status()).toBe(201);
   const { data } = await started.json() as { data: { attemptId: string } };
@@ -276,6 +290,45 @@ test("another learner opening the device removes the previous learner's local pr
     await page.goto("/learner");
     await expect.poll(async () => (await deviceStorage(page)).drafts).not.toContain(learners.switchFrom);
     expect((await deviceStorage(page)).caches.filter((name) => name.includes(learners.switchFrom))).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("a learner prepares real audio, answers yes/no and audio picture choice, and reviews the result", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.addCookies([{ name: "cambridgeyle_session", value: tokens.sounds, url: "http://127.0.0.1:3100", httpOnly: true, secure: false, sameSite: "Lax" }]);
+  const page = await context.newPage();
+  try {
+    await page.goto("/learner");
+    await page.getByRole("region", { name: "Practice to choose" }).getByRole("article").filter({ hasText: "Animal sounds" }).getByRole("link", { name: "Start" }).click();
+    const sound = page.getByRole("listitem").filter({ hasText: "Sound" });
+    await expect(sound).toContainText("Ready");
+    await expect(button(page, "Start")).toBeEnabled();
+    await button(page, "Start").click();
+    await expect(page).toHaveURL(/\/attempt\/[^/]+$/);
+
+    await button(page, "Yes").click();
+    await expect(button(page, "Yes")).toHaveAttribute("aria-pressed", "true");
+    await button(page, "Next").click();
+    await button(page, "Play the sound").click();
+    await expect(page.getByText("Playing the sound.")).toBeVisible();
+    await expect(button(page, "Play again")).toBeVisible();
+    await page.getByRole("button", { name: "cat", exact: true }).click();
+    await expect(page.getByRole("button", { name: "cat", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+
+    const reviewed = await submitAndReview(page);
+    await expect(reviewed.nth(0)).toContainText(/Your answer: yes/i);
+    await expect(reviewed.nth(0)).toContainText("You got this one right.");
+    await expect(reviewed.nth(1)).toContainText("Listening and pictures");
+    await expect(reviewed.nth(1)).toContainText("Your answer: cat");
+    await expect(reviewed.nth(1)).toContainText("Listen for the animal's name.");
+    const sql = postgres(e2eDatabaseUrl, { max: 1, prepare: false });
+    try {
+      const attemptId = page.url().split("/attempt/")[1]!.split("/")[0]!;
+      await expect(sql`SELECT count(*)::int AS events FROM practice_attempt_playback_events WHERE attempt_id = ${attemptId}`).resolves.toEqual([{ events: 1 }]);
+    } finally { await sql.end(); }
   } finally {
     await context.close();
   }

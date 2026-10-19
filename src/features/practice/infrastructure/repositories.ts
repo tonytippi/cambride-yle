@@ -240,6 +240,8 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
     const attempt = (await tx.select().from(practiceAttempts).where(and(eq(practiceAttempts.id, input.attemptId), eq(practiceAttempts.learnerId, learnerId))).limit(1))[0];
     if (!attempt || attempt.practiceSetId !== input.setId) return { error: "ATTEMPT_SCOPE_MISMATCH" };
     if (attempt.status === "submitted") return attempt.finalisationKey === input.idempotencyKey ? { attemptId: attempt.id, setId: attempt.practiceSetId, submittedAt: attempt.submittedAt!, revision: attempt.revision } : { error: "ATTEMPT_FINALISED" };
+    // An attempt replaced by Start again is closed, not merely out of date.
+    if (attempt.status !== "open") return { error: "ATTEMPT_FINALISED" };
     if (attempt.revision !== input.expectedRevision) return { error: "ATTEMPT_REVISION_CONFLICT" };
     const set = (await tx.select({ title: practiceSets.title, paper: practiceSets.paper, part: practiceSets.part }).from(practiceSets).where(eq(practiceSets.id, attempt.practiceSetVersionId)).limit(1))[0];
     const items = await tx.select({ id: practiceSetItems.id, position: practiceSetItems.position, engine: practiceSetItems.engine, prompt: practiceSetItems.renderedPrompt, options: practiceSetItems.renderedOptions, answerPolicy: practiceSetItems.answerPolicy, feedback: practiceSetItems.feedback, tags: practiceSetItems.tags }).from(practiceSetItems).where(eq(practiceSetItems.practiceSetId, attempt.practiceSetVersionId)).orderBy(practiceSetItems.position);
