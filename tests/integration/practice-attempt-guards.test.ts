@@ -13,7 +13,7 @@ vi.mock("@/features/practice/infrastructure/media-gateway", () => ({
 
 import { createAnswerPolicyVersion, createCurriculumGuidance, createCurriculumTarget } from "@/features/curriculum/application/curriculum";
 import { approveContent, approvePracticeSet, createManualMedia, createManualQuestion, createPracticeSetDraft, publishContent, publishPracticeSet, submitForReview, submitPracticeSetForReview, validateContent } from "@/features/content/application/content";
-import { getOpenPracticeAttempt, getPracticePlayer, getSubmittedPracticeReview, recordPracticePlayback, savePracticeResponse, startPractice, submitPracticeAttempt } from "@/features/practice/application/practice";
+import { getAttemptMedia, getOpenPracticeAttempt, getPracticePlayer, getSubmittedPracticeReview, recordPracticePlayback, savePracticeResponse, startPractice, submitPracticeAttempt } from "@/features/practice/application/practice";
 
 type Role = "learner" | "academic_lead" | "admin";
 const actor = (id: string, role: Role) => ({ id, email: `${role}@example.test`, displayName: role, role });
@@ -91,6 +91,13 @@ describe("practice attempt guards", () => {
       await expect(getPracticePlayer(owner, attempt)).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
       await expect(getSubmittedPracticeReview(owner, attempt)).resolves.toMatchObject({ data: { items: [expect.objectContaining({ response: "tom", outcome: "correct" })] } });
       await expect(sql`SELECT count(*)::int AS events FROM practice_attempt_playback_events WHERE attempt_id = ${attemptId}`).resolves.toEqual([{ events: 1 }]);
+
+      // The submitted attempt's own media stays available for its review, and only to its learner.
+      const mediaRequest = { ...attempt, setVersionId: player.setVersionId, mediaId, mediaKey: item.media[0]!.mediaKey };
+      await expect(getSubmittedPracticeReview(owner, attempt)).resolves.toMatchObject({ data: { setVersionId: player.setVersionId, items: [expect.objectContaining({ media: [expect.objectContaining({ id: mediaId, type: "audio" })] })] } });
+      await expect(getAttemptMedia(owner, mediaRequest)).resolves.toMatchObject({ id: mediaId });
+      await expect(getAttemptMedia(other, mediaRequest)).resolves.toBeUndefined();
+      await expect(getAttemptMedia(owner, { ...mediaRequest, mediaKey: `${mediaId}/wrong` })).resolves.toBeUndefined();
     } finally {
       await sql.end();
     }
@@ -107,6 +114,8 @@ describe("practice attempt guards", () => {
       await expect(savePracticeResponse(owner, { ...attempt, itemId: player.items[0]!.id, expectedRevision: 0, value: "tom" })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
       await expect(submitPracticeAttempt(owner, { ...attempt, expectedRevision: 0, idempotencyKey: crypto.randomUUID() })).resolves.toMatchObject({ error: { code: "ATTEMPT_FINALISED" } });
       await expect(sql`SELECT status::text FROM practice_attempts WHERE id = ${replaced.attemptId}`).resolves.toEqual([{ status: "abandoned" }]);
+      const media = player.items[0]!.media[0]!;
+      await expect(getAttemptMedia(owner, { ...attempt, setVersionId: player.setVersionId, mediaId: media.id, mediaKey: media.mediaKey })).resolves.toBeUndefined();
     } finally {
       await sql.end();
     }

@@ -115,3 +115,6 @@ h1 { margin:8px 0 16px; font:800 28px/1.2 "Nunito Sans", system-ui, sans-serif; 
 .more-actions summary::before, .history summary::before, .add-panel summary::before, .choice-list summary::before, .staff-form details summary::before, .staff-nav-menu summary::before, .catalogue-list details summary::before { content:"▸"; display:inline-block; width:20px; color:var(--ink-secondary); }
 .more-actions[open] > summary::before, .history[open] > summary::before, .add-panel[open] > summary::before, .choice-list[open] > summary::before, .staff-form details[open] > summary::before, .staff-nav-menu[open] > summary::before, .catalogue-list details[open] > summary::before { content:"▾"; }
 .catalogue-list details summary { min-height:48px; display:flex; align-items:center; font-weight:700; cursor:pointer; }
+.review-media { display:grid; gap:12px; margin:8px 0 12px; }
+.review-picture { display:block; width:100%; max-width:320px; height:auto; border:1px solid var(--border); border-radius:var(--radius-lg, 16px); }
+.review-media audio { width:100%; max-width:320px; }

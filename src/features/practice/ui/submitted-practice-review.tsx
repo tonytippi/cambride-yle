@@ -7,6 +7,7 @@ const stateClass = (state: keyof typeof states) => state.replaceAll(" ", "-");
 
 /* Result summary first, then answer review; evidence wording follows EXPERIENCE.md and never reads as an official result. */
 export function SubmittedPracticeReview({ review }: { review: Review }) {
+  const mediaUrl = (media: Review["items"][number]["media"][number]) => `/api/practice/media?attemptId=${review.attemptId}&setId=${review.setId}&setVersionId=${review.setVersionId}&mediaId=${media.id}&mediaKey=${encodeURIComponent(media.mediaKey)}`;
   const answered = review.items.filter((item) => item.response !== null).length;
   return <main className="shell"><section className="submitted-review">
     <p className="eyebrow">Practice complete</p>
@@ -26,6 +27,10 @@ export function SubmittedPracticeReview({ review }: { review: Review }) {
       {review.items.map((item) => <article key={item.id} className={`review-item ${item.outcome}`}>
         <h3>Question {item.position}</h3>
         <p className="eyebrow">{references[item.engine]}</p>
+        {item.media.length > 0 && <div className="review-media">{item.media.map((media) => media.type === "image"
+          // eslint-disable-next-line @next/next/no-img-element -- authorised, attempt-scoped media
+          ? <img key={media.id} src={mediaUrl(media)} alt={media.altText ?? ""} className="review-picture" />
+          : <audio key={media.id} controls preload="none" src={mediaUrl(media)} aria-label={`Listen again to the sound for question ${item.position}`} />)}</div>}
         <p className="review-prompt">{item.prompt}</p>
         <p><strong>Your answer:</strong> {item.response === null ? "No answer" : item.responseLabel}</p>
         <p><strong>Correct answer:</strong> {item.approvedAnswerLabel}</p>

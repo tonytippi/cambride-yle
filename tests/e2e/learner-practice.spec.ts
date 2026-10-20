@@ -324,6 +324,11 @@ test("a learner prepares real audio, answers yes/no and audio picture choice, an
     await expect(reviewed.nth(1)).toContainText("Listening and pictures");
     await expect(reviewed.nth(1)).toContainText("Your answer: cat");
     await expect(reviewed.nth(1)).toContainText("Listen for the animal's name.");
+    // Review keeps each question's pictures and sounds, served for the submitted attempt.
+    const picture = reviewed.nth(0).locator("img.review-picture");
+    await expect(picture).toBeVisible();
+    await expect.poll(() => picture.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth)).toBeGreaterThan(0);
+    await expect(reviewed.nth(1).locator("audio")).toHaveAttribute("aria-label", "Listen again to the sound for question 2");
     const sql = postgres(e2eDatabaseUrl, { max: 1, prepare: false });
     try {
       const attemptId = page.url().split("/attempt/")[1]!.split("/")[0]!;
