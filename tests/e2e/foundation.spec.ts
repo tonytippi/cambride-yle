@@ -33,3 +33,18 @@ test("content draft workspace is protected from unauthenticated visitors", async
   await expect(page).toHaveURL(/\/sign-in$/);
   await expect(page.getByRole("heading", { name: "Sign in to practice" })).toBeVisible();
 });
+
+test("Continue with Google navigates the whole page to Google instead of fetching the redirect", async ({ page }) => {
+  // Never reach the real Google endpoint from tests.
+  await page.route((url) => url.hostname === "accounts.google.com", (route) => route.abort());
+  await page.goto("/sign-in");
+  const [request] = await Promise.all([
+    page.waitForRequest((candidate) => candidate.url().startsWith("https://accounts.google.com/o/oauth2/v2/auth?")),
+    page.getByRole("link", { name: "Continue with Google" }).click(),
+  ]);
+  expect(request.isNavigationRequest()).toBe(true);
+  expect(request.resourceType()).toBe("document");
+  const url = new URL(request.url());
+  expect(url.searchParams.get("client_id")).toBe("test-client-id");
+  expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:3100/api/auth/google/callback");
+});
