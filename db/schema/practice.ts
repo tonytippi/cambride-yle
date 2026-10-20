@@ -46,6 +46,7 @@ export const practiceAttempts = pgTable("practice_attempts", {
   uniqueIndex("practice_attempts_one_open_per_learner_set").on(table.learnerId, table.practiceSetId).where(sql`${table.status} = 'open'`),
 ]);
 
+/* Retired by migration 0032: read-only history; evidence now comes from submitted_evidence_facts. */
 export const practiceAttemptEvidence = pgTable("practice_attempt_evidence", {
   id: uuid("id").primaryKey(),
   attemptId: uuid("attempt_id").notNull(),

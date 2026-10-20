@@ -106,17 +106,18 @@ describe("submitted evidence projection migration", () => {
         await transaction`INSERT INTO practice_attempt_review_items (id, attempt_id, practice_set_item_id, position, response, outcome, evidence_label, approved_answer, approved_answer_label, presentation, answer_policy_version, curriculum_tags) VALUES (${reviewId}, ${attemptId}, ${itemId}, 1, '"learner response"'::jsonb, 'needs_teacher_review', 'not_assessed_yet', '"approved"'::jsonb, 'Approved', '{}'::jsonb, 'fixture', ${transaction.json({ evidenceTargets: [{ id: targetId, label: targetLabel }] })})`;
         await transaction`ALTER TABLE practice_attempt_review_items ENABLE TRIGGER ALL`;
         await transaction`INSERT INTO submitted_evidence_facts (id, attempt_id, review_item_id, learner_id, practice_set_id, paper, part, language_target_id, language_target, automatic_outcome, dimensions, submitted_at) VALUES (${crypto.randomUUID()}, ${attemptId}, ${reviewId}, ${learnerId}, ${setId}, 'listening', '1', ${targetId}, ${targetLabel}, 'needs_teacher_review', '{}'::jsonb, ${submittedAt})`;
-        await transaction`INSERT INTO practice_attempt_evidence (id, attempt_id, practice_set_id, practice_area_id, label) VALUES (${crypto.randomUUID()}, ${attemptId}, ${setId}, ${targetId}, 'not_assessed_yet')`;
       });
       await expect(appendTeacherEvidenceResolution({ reviewItemId: reviewId, outcome: "correct", reason: "Accepted answer", expectedRevision: 0, resolverId: leadId })).resolves.toEqual({ revision: 1, effectiveOutcome: "correct" });
       const [resolution, audit, snapshot] = await Promise.all([
         sql<{ revision: number; effective_outcome: string }[]>`SELECT revision, effective_outcome::text FROM teacher_evidence_resolutions WHERE review_item_id = ${reviewId}`,
         sql<{ outcome: string }[]>`SELECT outcome FROM audit_events WHERE actor_id = ${leadId} AND action = 'EVIDENCE_RESOLUTION' AND target_id = ${reviewId}`,
-        sql<{ outcome: string; response: string; evidence_label: string; label: string }[]>`SELECT review.outcome::text, review.response::text, review.evidence_label::text, evidence.label::text FROM practice_attempt_review_items review JOIN practice_attempt_evidence evidence ON evidence.attempt_id = review.attempt_id WHERE review.id = ${reviewId}`,
+        sql<{ outcome: string; response: string; evidence_label: string }[]>`SELECT review.outcome::text, review.response::text, review.evidence_label::text FROM practice_attempt_review_items review WHERE review.id = ${reviewId}`,
       ]);
       expect(resolution).toEqual([{ revision: 1, effective_outcome: "correct" }]);
       expect(audit).toEqual([{ outcome: "SUCCESS" }]);
-      expect(snapshot).toEqual([{ outcome: "needs_teacher_review", response: '"learner response"', evidence_label: "not_assessed_yet", label: "not_assessed_yet" }]);
+      expect(snapshot).toEqual([{ outcome: "needs_teacher_review", response: '"learner response"', evidence_label: "not_assessed_yet" }]);
+      // The retired attempt-level evidence table accepts no new rows.
+      await expect(sql`INSERT INTO practice_attempt_evidence (id, attempt_id, practice_set_id, practice_area_id, label) VALUES (${crypto.randomUUID()}, ${attemptId}, ${setId}, ${targetId}, 'not_assessed_yet')`).rejects.toThrow("PRACTICE_ATTEMPT_EVIDENCE_RETIRED");
       expect((await submittedEvidenceReader.listSubmittedEvidenceFacts()).find((fact) => fact.attemptId === attemptId)?.effectiveOutcome).toBe("correct");
       expect((await listLearnerEvidenceFacts(learnerId, new Date(submittedAt.getTime() - 1))).find((evidence) => evidence.attemptId === attemptId)?.effectiveOutcome).toBe("correct");
       await expect(appendTeacherEvidenceResolution({ reviewItemId: reviewId, outcome: "incorrect", reason: "Stale correction", expectedRevision: 0, resolverId: leadId })).resolves.toEqual({ error: "TEACHER_RESOLUTION_CONFLICT" });

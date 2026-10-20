@@ -2,7 +2,6 @@ import { and, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import {
   curriculumGuidance,
   curriculumTargets,
-  practiceAttemptEvidence,
   practiceAttempts,
   practiceAttemptPlaybackEvents,
   practiceAttemptReviewItems,
@@ -290,11 +289,6 @@ export async function submitPracticeAttempt(learnerId: string, input: { setId: s
         await tx.insert(submittedEvidenceFacts).values({ id: uuidv7(), attemptId: attempt.id, reviewItemId: reviewItem.id, learnerId, practiceSetId: attempt.practiceSetId, paper: set.paper, part: set.part, languageTargetId: target.id, languageTarget: target.canonicalId, automaticOutcome: reviewItem.outcome as "correct" | "incorrect" | "unanswered" | "needs_teacher_review", submittedAt, dimensions: snapshotDimensions(reviewTags) });
       }
     }
-    const tags = items.flatMap((item) => {
-      const value = item.tags as { primaryTargetId?: unknown; supportingTargetIds?: unknown; guidanceId?: unknown };
-      return [...targetIdsFor(value), ...(typeof value?.guidanceId === "string" ? [value.guidanceId] : [])];
-    });
-    for (const area of new Set(tags)) await tx.insert(practiceAttemptEvidence).values({ id: uuidv7(), attemptId: attempt.id, practiceSetId: attempt.practiceSetId, practiceAreaId: area, label });
     return { attemptId: updated.id, setId: updated.practiceSetId, submittedAt: updated.submittedAt!, revision: updated.revision };
   });
 }
