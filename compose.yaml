@@ -1,18 +1,14 @@
-# Internal test deployment: PostgreSQL, a one-shot migration and the app.
-# Secrets come from .env; APP_ORIGIN is the public HTTPS origin served by the Cloudflare tunnel.
+# Internal deployment: PostgreSQL, a one-shot migration and the app.
+# All configuration and secrets come from .env.production (see .env.production.example); .env stays for local development.
 name: cambridgeyle
-
-x-app-environment: &app-environment
-  NODE_ENV: production
-  DATABASE_URL: postgres://cambridgeyle:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/cambridgeyle
 
 services:
   db:
     image: postgres:18
     restart: unless-stopped
+    env_file: .env.production
     environment:
       POSTGRES_USER: cambridgeyle
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: cambridgeyle
     volumes:
       - db-data:/var/lib/postgresql
@@ -24,7 +20,7 @@ services:
 
   migrate:
     build: { context: ., target: migrate }
-    environment: *app-environment
+    env_file: .env.production
     depends_on:
       db: { condition: service_healthy }
     restart: "no"
@@ -32,10 +28,7 @@ services:
   app:
     build: { context: ., target: app }
     restart: unless-stopped
-    env_file: .env
-    environment:
-      <<: *app-environment
-      GOOGLE_OIDC_REDIRECT_URI: ${APP_ORIGIN:?set APP_ORIGIN in .env}/api/auth/google/callback
+    env_file: .env.production
     depends_on:
       migrate: { condition: service_completed_successfully }
     # Bound to loopback only; the Cloudflare tunnel connects to http://127.0.0.1:${APP_PORT:-9100}.
