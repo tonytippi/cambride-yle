@@ -209,7 +209,8 @@ export default async function AcademicLeadHome() {
         <div className="account-list">
           {drafts.sets.map((set) => (
             <article className="account-card" key={set.id}>
-              <h3>Practice set: {set.id}</h3>
+              <h3>Practice set: {set.title}</h3>
+              <p>ID: {set.id}</p>
               <p>Status: {set.status}</p>
               <p>
                 {set.paper.replace("_", " ")} Part {set.part} ·{" "}

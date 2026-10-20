@@ -1,13 +1,36 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const config = vi.hoisted(() => ({ AI_TEXT_ENDPOINT: "https://text.example.test/v1", AI_TEXT_MODEL: "text-model", AI_TEXT_API_KEY: "text-secret", AI_IMAGE_ENDPOINT: "https://image.example.test/v1/", AI_IMAGE_MODEL: "image-model", AI_IMAGE_API_KEY: "image-secret" }));
 vi.mock("@/shared/config/server", () => ({ serverConfig: config }));
-import { generate } from "@/features/content/infrastructure/gateways";
+import { generate, retryDelaysMs } from "@/features/content/infrastructure/gateways";
 const draft = { paper: "reading_writing" as const, part: 1, engine: "picture_true_false" as const, primaryTargetId: "018f0000-0000-7000-8000-000000000002", supportingTargetIds: [], topicIds: ["018f0000-0000-7000-8000-000000000003"], guidanceId: "018f0000-0000-7000-8000-000000000004", answerPolicyVersionId: "018f0000-0000-7000-8000-000000000005", prompt: "Cat", options: ["true"], estimatedDurationSeconds: 60, accessibilityMetadata: { altText: "Cat" }, provenance: { source: "Original", rightsReference: "Owned" } };
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64");
 const reply = (body: unknown) => vi.fn().mockResolvedValue({ ok: true, json: async () => body });
 
 describe("AI draft gateways", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("retries transient gateway failures with backoff and gives up after the last retry", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, status: 500 }).mockRejectedValueOnce(new TypeError("socket hang up")).mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: [{ b64_json: png }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = generate({ kind: "image", staffPrompt: "Draw", permittedReferences: [], draft: { ...draft, mediaType: "image", description: "Cat" } });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ output: { description: "Cat" } });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const failing = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", failing);
+    const failed = generate({ kind: "text", staffPrompt: "Draft", permittedReferences: [], draft });
+    const assertion = expect(failed).rejects.toMatchObject({ code: "AI_DRAFT_PROVIDER_FAILED" });
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(failing).toHaveBeenCalledTimes(retryDelaysMs.length + 1);
+
+    const rejected = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    vi.stubGlobal("fetch", rejected);
+    await expect(generate({ kind: "text", staffPrompt: "Draft", permittedReferences: [], draft })).rejects.toMatchObject({ code: "AI_DRAFT_PROVIDER_FAILED" });
+    expect(rejected).toHaveBeenCalledTimes(1);
+  });
 
   it("generates images through the OpenAI-compatible image endpoint with independent credentials and no protected data", async () => {
     const fetchMock = reply({ data: [{ b64_json: png }] });
@@ -40,7 +63,7 @@ describe("AI draft gateways", () => {
     await expect(generate({ kind: "text", staffPrompt: "Draft", permittedReferences: [], draft })).rejects.toMatchObject({ code: "AI_DRAFT_PROVIDER_INVALID_RESPONSE" });
     vi.stubGlobal("fetch", reply({ data: [{ url: "https://cdn.example.test/cat.png" }] }));
     await expect(generate({ kind: "image", staffPrompt: "Draw", permittedReferences: [], draft: { ...draft, mediaType: "image", description: "Cat" } })).rejects.toMatchObject({ code: "AI_DRAFT_PROVIDER_INVALID_RESPONSE" });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({}) }));
     await expect(generate({ kind: "text", staffPrompt: "Draft", permittedReferences: [], draft })).rejects.toMatchObject({ code: "AI_DRAFT_PROVIDER_FAILED" });
   });
 });

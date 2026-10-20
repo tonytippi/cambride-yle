@@ -6,6 +6,8 @@ import { parseServerConfig } from "./src/shared/config/environment";
 if (process.env.NODE_ENV === "production") parseServerConfig(process.env);
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the container image (see Dockerfile).
+  output: "standalone",
   allowedDevOrigins: ["127.0.0.1"],
   // Staff media uploads go through a Server Action: 15 MB audio plus multipart overhead.
   experimental: { serverActions: { bodySizeLimit: "16mb" } },

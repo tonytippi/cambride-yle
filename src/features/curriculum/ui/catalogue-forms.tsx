@@ -38,7 +38,7 @@ export function TargetForm({ action }: { action: Action }) {
         <input
           name="canonicalId"
           required
-          pattern="[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*"
+          pattern="[a-z][a-z0-9\-]*"
         />
       </label>
       <TargetFields />

@@ -18,6 +18,19 @@ const textInstructions = [
 const imageStyle = "Simple, friendly flat illustration for young children on a plain light background. No text, letters or numbers in the picture.";
 
 const decode = (value: string) => Uint8Array.from(Buffer.from(value, "base64"));
+export const retryDelaysMs = [1_000, 2_000, 3_000, 5_000];
+/* Transient gateway failures (5xx, 429 or a dropped connection) are retried with backoff; other failures return at once. */
+async function send(url: string, init: NonNullable<Parameters<typeof fetch>[1]>) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || (response.status < 500 && response.status !== 429) || attempt >= retryDelaysMs.length) return response;
+    } catch (error) {
+      if ((error instanceof Error && error.name === "AbortError") || attempt >= retryDelaysMs.length) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+  }
+}
 
 export async function generate(request: GenerationRequest): Promise<GatewayResult> {
   const config = request.kind === "text" ? { endpoint: serverConfig.AI_TEXT_ENDPOINT, model: serverConfig.AI_TEXT_MODEL, key: serverConfig.AI_TEXT_API_KEY } : { endpoint: serverConfig.AI_IMAGE_ENDPOINT, model: serverConfig.AI_IMAGE_MODEL, key: serverConfig.AI_IMAGE_API_KEY };
@@ -27,9 +40,9 @@ export async function generate(request: GenerationRequest): Promise<GatewayResul
   const call = request.kind === "text"
     ? { url: `${base}/chat/completions`, body: { model: config.model, response_format: { type: "json_object" }, messages: [{ role: "system", content: textInstructions }, { role: "user", content: JSON.stringify({ draft: request.draft, staffPrompt: request.staffPrompt, permittedReferences: references }) }] } }
     : { url: `${base}/images/generations`, body: { model: config.model, n: 1, response_format: "b64_json", prompt: [request.staffPrompt, `Picture: ${request.draft.description}`, ...references.map((reference) => `Reference: ${reference}`), imageStyle].join("\n") } };
-  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), request.kind === "text" ? 60_000 : 180_000);
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), request.kind === "text" ? 90_000 : 240_000);
   try {
-    const response = await fetch(call.url, { method: "POST", redirect: "error", signal: controller.signal, headers: { "content-type": "application/json", authorization: `Bearer ${config.key}` }, body: JSON.stringify(call.body) });
+    const response = await send(call.url, { method: "POST", redirect: "error", signal: controller.signal, headers: { "content-type": "application/json", authorization: `Bearer ${config.key}` }, body: JSON.stringify(call.body) });
     if (!response.ok) throw new GatewayError("AI_DRAFT_PROVIDER_FAILED", "The selected AI draft gateway did not produce a draft.");
     let payload: { choices?: { message?: { content?: unknown } }[]; data?: { b64_json?: unknown }[] };
     try { payload = await response.json(); } catch (error) { if (error instanceof Error && error.name === "AbortError") throw new GatewayError("AI_DRAFT_PROVIDER_TIMEOUT", "The selected AI draft gateway timed out."); throw new GatewayError("AI_DRAFT_PROVIDER_INVALID_RESPONSE", "The selected AI draft gateway returned an invalid response."); }

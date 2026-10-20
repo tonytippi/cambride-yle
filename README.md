@@ -16,14 +16,27 @@ Khi tài liệu mâu thuẫn, dùng thứ tự sau. Mỗi quyết định chỉ 
 
 ## Trạng thái sẵn sàng
 
-Bộ tài liệu **đã implementation-ready cho core P0**, nhưng chưa AI-enabled, public-claim-ready, pilot-ready hoặc production-ready. PRD Decision Register là danh sách duy nhất của các quyết định mở. Các blocking gate hiện tại:
+Core P0 đã implement và chạy được nội bộ (Docker Compose, xem bên dưới); chưa public-claim-ready hay production-ready. PRD Decision Register là danh sách duy nhất của các quyết định mở:
 
-- `GATE-ACADEMIC-SOURCES` trước mọi public curriculum/alignment claim dựa trên imported references.
-- `GATE-PUBLIC-WORDING` trước mọi public-facing claim.
-- `GATE-AI-DRAFT-PROVIDER` trước khi bật AI tạo content draft.
-- `GATE-DEPLOYMENT` trước production launch.
+- `GATE-ACADEMIC-SOURCES` trước mọi public curriculum/alignment claim dựa trên imported references (không chặn dùng nội bộ).
+- `GATE-PUBLIC-WORDING` trước mọi public-facing claim (không chặn dùng nội bộ).
+- `GATE-DEPLOYMENT` đã đóng cho giai đoạn test nội bộ; vẫn mở cho production launch.
+- `GATE-AI-DRAFT-PROVIDER` đã đóng ngày 2026-10-20: hai gateway OpenAI-compatible được cấu hình phía server.
 
 Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN`, `GATE-DATA-GOVERNANCE` và `GATE-PRODUCT-ASSUMPTIONS` đã đóng: teacher-facing curriculum/assessment guidance là nguồn tạo/review content, mỗi set được `academic_lead`/`admin` phê duyệt riêng, P0 không xử lý yêu cầu xóa dữ liệu, và browser matrix đã được chấp thuận. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
+
+## Chạy nội bộ bằng Docker Compose
+
+`compose.yaml` chạy PostgreSQL 18, một bước migration chạy một lần, và app (Next.js standalone). App chỉ bind vào `127.0.0.1:${APP_PORT:-3000}`; Cloudflare tunnel trỏ vào cổng đó. Media nằm trong bucket R2 private, app đọc/ghi qua S3 API.
+
+1. Điền `.env` theo `.env.example`: Google OAuth, `ADMIN_EMAILS`, R2 (`R2_ACCESS_ENDPOINT`, `R2_ACCESS_KEY`, `R2_ACCESS_SECRET`, `BUCKET`), `MEDIA_SIGNING_SECRET` (≥32 ký tự), `POSTGRES_PASSWORD`, và AI gateway nếu dùng (`AI_DRAFT_PROVIDER_GATE_CLOSED=true`). Không đặt `MEDIA_BINARY_ORIGIN` khi dùng R2.
+2. Đặt `APP_ORIGIN` là origin HTTPS public của tunnel, ví dụ `https://yle.example.org`, và thêm `<APP_ORIGIN>/api/auth/google/callback` vào Authorized redirect URIs của Google OAuth client.
+3. `docker compose up -d --build`. Kiểm tra: `curl http://127.0.0.1:3000/api/health`.
+4. Đăng nhập bằng Google với một email trong `ADMIN_EMAILS` để vào `/admin`; admin tạo tài khoản learner (mật khẩu) và staff.
+
+Cập nhật phiên bản: `git pull && docker compose up -d --build` (migration chạy trước khi app khởi động). Sao lưu DB: `docker compose exec -T db pg_dump -U cambridgeyle cambridgeyle > backup-$(date +%F).sql`; khôi phục bằng `psql` vào DB trống. Dữ liệu DB nằm trong volume `cambridgeyle_db-data`; `docker compose down -v` xoá volume này.
+
+Smoke test toàn hệ thống (ghi dữ liệu "Smoke" vào DB và R2, gọi AI thật): `SMOKE_BASE_URL=http://127.0.0.1:3000 npx playwright test -c playwright.smoke.config.ts`.
 
 ## Imported references
 

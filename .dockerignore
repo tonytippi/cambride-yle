@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+.env
+.env.*
+!.env.example
+playwright-report
+test-results
+certificates
+_bmad
+_bmad-output
+.agents
+.opencode
+*.tsbuildinfo
