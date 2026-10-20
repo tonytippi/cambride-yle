@@ -1,4 +1,5 @@
 import { database } from "@/infrastructure/database/client";
+import { authorise } from "@/features/identity/application/auth";
 import type { Actor } from "@/features/identity/domain/contracts";
 import { mediaDraftSchema, questionDraftSchema, type MediaDraftInput, type QuestionDraftInput } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
@@ -9,11 +10,17 @@ export async function getContentDrafts(actor: Actor) {
   staff(actor);
   return repository.listDrafts();
 }
-/* Staff-only preview of a media version's stored file. */
+/* Staff preview of a media version's stored file; teachers may only see published media. */
 export async function getMediaFile(actor: Actor, mediaId: string) {
-  staff(actor);
+  authorise(actor, ["teacher", "academic_lead", "admin"]);
   const media = await repository.getMedia(draftId(mediaId, "MEDIA_DRAFT_NOT_FOUND"));
+  if (actor.role === "teacher" && media?.status !== "published") return undefined;
   return storedFileOf(media);
+}
+/* Read-only library of published questions and practice sets for teachers and content staff. */
+export async function getPublishedLibrary(actor: Actor) {
+  authorise(actor, ["teacher", "academic_lead", "admin"]);
+  return repository.listPublishedLibrary();
 }
 export async function createManualQuestion(
   actor: Actor,

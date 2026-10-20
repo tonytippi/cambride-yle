@@ -583,3 +583,29 @@ export async function retirePracticeSet(id: string, db: Database) {
     .set({ status: "retired" })
     .where(eq(practiceSets.id, id));
 }
+/* Read-only view of published content for every staff role, including teachers. */
+export async function listPublishedLibrary(db: Database = database) {
+  const questions = await db
+    .select({ id: questionDrafts.id, prompt: questionDrafts.prompt, options: questionDrafts.options, engine: questionDrafts.engine, paper: questionDrafts.paper, part: questionDrafts.part, estimatedDurationSeconds: questionDrafts.estimatedDurationSeconds, topic: curriculumGuidance.topic, taskFormat: curriculumGuidance.taskFormat, objective: curriculumTargets.canonicalId, publishedAt: questionDrafts.createdAt })
+    .from(questionDrafts)
+    .innerJoin(curriculumGuidance, eq(questionDrafts.guidanceId, curriculumGuidance.id))
+    .innerJoin(curriculumTargets, eq(questionDrafts.primaryTargetId, curriculumTargets.id))
+    .where(eq(questionDrafts.status, "published"))
+    .orderBy(asc(questionDrafts.paper), asc(questionDrafts.part), asc(questionDrafts.createdAt));
+  const media = questions.length
+    ? await db
+        .select({ questionVersionId: questionVersionMedia.questionVersionId, id: mediaDrafts.id, mediaType: mediaDrafts.mediaType, description: mediaDrafts.description, hasFile: sql<boolean>`${mediaDrafts.objectKey} IS NOT NULL` })
+        .from(questionVersionMedia)
+        .innerJoin(mediaDrafts, eq(questionVersionMedia.mediaVersionId, mediaDrafts.id))
+        .where(and(inArray(questionVersionMedia.questionVersionId, questions.map((question) => question.id)), eq(mediaDrafts.status, "published")))
+        .orderBy(asc(questionVersionMedia.position))
+    : [];
+  const sets = await db.select({ id: practiceSets.id, title: practiceSets.title, paper: practiceSets.paper, part: practiceSets.part, estimatedDurationSeconds: practiceSets.estimatedDurationSeconds }).from(practiceSets).where(eq(practiceSets.status, "published")).orderBy(asc(practiceSets.title));
+  const items = sets.length
+    ? await db.select({ practiceSetId: practiceSetItems.practiceSetId, position: practiceSetItems.position, engine: practiceSetItems.engine, prompt: practiceSetItems.renderedPrompt }).from(practiceSetItems).where(inArray(practiceSetItems.practiceSetId, sets.map((set) => set.id))).orderBy(asc(practiceSetItems.position))
+    : [];
+  return {
+    questions: questions.map((question) => ({ ...question, options: question.options as string[], media: media.filter((entry) => entry.questionVersionId === question.id) })),
+    sets: sets.map((set) => ({ ...set, items: items.filter((item) => item.practiceSetId === set.id) })),
+  };
+}

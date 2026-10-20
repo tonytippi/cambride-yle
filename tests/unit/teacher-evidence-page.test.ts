@@ -17,7 +17,7 @@ describe("teacher evidence page", () => {
     const learnerId = "018f0000-0000-7000-8000-000000000099";
     dependencies.getCentreEvidence.mockResolvedValue({ error: { code: "INPUT_INVALID", message: "Choose a valid evidence view." } });
     const page = await TeacherHome({ searchParams: Promise.resolve({ learner: learnerId }) });
-    expect(page.props.children.props.error).toBe("Choose a valid evidence view.");
+    expect(page.props.error).toBe("Choose a valid evidence view.");
     expect(dependencies.getCentreEvidence).toHaveBeenCalledWith(teacher, { learnerId });
   });
 });

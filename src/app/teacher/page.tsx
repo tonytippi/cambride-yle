@@ -9,6 +9,6 @@ export default async function TeacherHome({ searchParams }: { searchParams: Prom
   const input = Object.fromEntries(Object.entries(query).flatMap(([key, value]) => value ? [[key === "learner" ? "learnerId" : key === "set" ? "practiceSetId" : key, value]] : []));
   const result = await getCentreEvidence(actor, input);
   const role = actor.role as "teacher" | "academic_lead" | "admin";
-  if ("error" in result) return <main className="shell"><EvidenceDashboard error={result.error.message} learnerId={learner} role={role} /></main>;
-  return <main className="shell"><EvidenceDashboard evidence={result.data} learnerId={learner} role={role} /></main>;
+  if ("error" in result) return <EvidenceDashboard error={result.error.message} learnerId={learner} role={role} />;
+  return <EvidenceDashboard evidence={result.data} learnerId={learner} role={role} />;
 }

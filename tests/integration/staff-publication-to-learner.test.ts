@@ -18,6 +18,8 @@ import {
   approveContent,
   approvePracticeSet,
   getContentReadiness,
+  getMediaFile,
+  getPublishedLibrary,
   createManualMedia,
   createManualQuestion,
   createPracticeSetDraft,
@@ -100,6 +102,18 @@ describe("staff publication to learner evidence", () => {
       await submitPracticeSetForReview(lead, { practiceSetId: setId });
       await approvePracticeSet(admin, { practiceSetId: setId });
       await publishPracticeSet(lead, { practiceSetId: setId });
+
+      // Teachers read published content only, including its stored media.
+      const reader = actor(ids.teacher, "teacher");
+      const library = await getPublishedLibrary(reader);
+      expect(library.sets).toEqual(expect.arrayContaining([expect.objectContaining({ id: setId, items: [expect.objectContaining({ position: 1, prompt: "The ball is red." })] })]));
+      expect(library.questions).toEqual(expect.arrayContaining([expect.objectContaining({ id: questionId, media: [expect.objectContaining({ id: mediaId, hasFile: true })] })]));
+      await expect(getMediaFile(reader, mediaId)).resolves.toMatchObject({ contentType: "image/png" });
+      const draftMediaId = await createManualMedia(lead, { ...scope, mediaType: "image", description: "An unpublished garden picture", estimatedDurationSeconds: 60, accessibilityMetadata: { altText: "A garden" } }, { bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 1, 1, 1]) });
+      await expect(getMediaFile(reader, draftMediaId)).resolves.toBeUndefined();
+      await expect(getMediaFile(lead, draftMediaId)).resolves.toMatchObject({ contentType: "image/png" });
+      expect(library.questions.some((question) => question.id === draftMediaId)).toBe(false);
+      await expect(getPublishedLibrary(submitter)).rejects.toThrow();
 
       // Learner selection by topic and task type.
       const home = await getLearnerHome(submitter, { topic, taskType: taskFormat });
