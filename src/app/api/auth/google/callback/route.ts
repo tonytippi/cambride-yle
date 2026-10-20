@@ -13,10 +13,15 @@ export async function GET(request: NextRequest) {
   const clearTransient = (response: NextResponse) => { for (const cookie of jar.getAll()) if (cookie.name.startsWith(oauthCookiePrefix)) response.cookies.set(cookie.name, "", { ...oauthCookieOptions, maxAge: 0 }); return response; };
   const failure = (code: string) => { logEvent({ requestId: request.headers.get("x-request-id") ?? "unknown", feature: "identity", action: "google-sign-in", outcome: "failure", errorCode: code }); return clearTransient(redirectTo("/sign-in?error=google", 307)); };
   if (!state || !saved || !storedState || !safeEqual(state, storedState) || !nonce || !verifier || !url.searchParams.get("code")) return failure("GOOGLE_STATE_INVALID");
+  let stage = "GOOGLE_TOKEN_EXCHANGE_FAILED";
   try {
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, cache: "no-store", body: new URLSearchParams({ code: url.searchParams.get("code")!, client_id: serverConfig.GOOGLE_OIDC_CLIENT_ID, client_secret: serverConfig.GOOGLE_OIDC_CLIENT_SECRET, redirect_uri: serverConfig.GOOGLE_OIDC_REDIRECT_URI, grant_type: "authorization_code", code_verifier: verifier }) });
+    // Each stage reports its own error code so a failed sign-in can be diagnosed from the log without secrets.
+    stage = "GOOGLE_TOKEN_EXCHANGE_FAILED";
     const tokens = await tokenResponse.json() as { id_token?: string }; if (!tokenResponse.ok || !tokens.id_token) throw new Error("TOKEN_EXCHANGE_FAILED");
+    stage = "GOOGLE_ID_TOKEN_INVALID";
     const identity = await verifyGoogleIdToken(tokens.id_token, { issuer: serverConfig.GOOGLE_OIDC_ISSUER, clientId: serverConfig.GOOGLE_OIDC_CLIENT_ID, nonce });
+    stage = "GOOGLE_ACCOUNT_REJECTED";
     const { actor, token } = await signInWithGoogle(identity, serverConfig.ADMIN_EMAILS); const response = redirectTo(roleHome(actor.role), 307); response.cookies.set(sessionCookieName, token, sessionCookieOptions); logEvent({ requestId: request.headers.get("x-request-id") ?? "unknown", actorId: actor.id, feature: "identity", action: "google-sign-in", outcome: "success" }); return clearTransient(response);
-  } catch { return failure("GOOGLE_SIGN_IN_FAILED"); }
+  } catch { return failure(stage); }
 }
