@@ -100,6 +100,10 @@ export const mediaDrafts = pgTable(
     mediaType: text("media_type").notNull(),
     previewUrl: text("preview_url"),
     description: text("description").notNull(),
+    objectKey: text("object_key"),
+    contentType: text("content_type"),
+    byteSize: integer("byte_size"),
+    contentSha256: text("content_sha256"),
   },
   (table) => [
     check("media_drafts_part_check", sql`${table.part} ~ '^[1-5]$'`),

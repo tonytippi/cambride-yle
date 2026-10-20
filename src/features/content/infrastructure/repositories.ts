@@ -22,6 +22,7 @@ import {
 import { database } from "@/infrastructure/database/client";
 import { uuidv7 } from "@/features/identity/infrastructure/uuid";
 import type { MediaDraftInput, QuestionDraftInput } from "../domain/contracts";
+import type { StoredMediaFile } from "../domain/media-file";
 import { snapshotItemTags, snapshotMediaHash, supportingTargetIdsFor } from "../domain/snapshot";
 type Database =
   typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
@@ -71,6 +72,7 @@ export async function createMedia(
   origin: "manual" | "generated",
   db: Database,
   sourceVersionId?: string,
+  file?: StoredMediaFile,
 ) {
   const id = uuidv7();
   await db.insert(mediaDrafts).values({
@@ -79,6 +81,7 @@ export async function createMedia(
     mediaType: input.mediaType,
     previewUrl: input.previewUrl,
     description: input.description,
+    ...(file && { objectKey: file.objectKey, contentType: file.contentType, byteSize: file.byteSize, contentSha256: file.contentSha256 }),
   });
   await audit("MEDIA_DRAFT_CREATED", "media", id, actorId, db);
   return id;
@@ -561,7 +564,7 @@ export async function createPublishedPracticeSet(
         practiceSetItemId: itemId,
         mediaVersionId: media.id,
         mediaType: media.mediaType,
-        objectVersion: media.id,
+        objectVersion: media.objectKey ?? media.id,
         contentHash: snapshotMediaHash(media),
         accessibilityMetadata: media.accessibilityMetadata,
         provenance: media.provenance,

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import postgres from "postgres";
 
 // The object store is external; every published media version is treated as available.
+// Media files are stored content-addressed in the private object store, which is external here.
+vi.mock("@/infrastructure/storage/object-store", () => ({ isObjectStoreConfigured: () => true, isObjectStoreWritable: () => true, hasObject: async () => true, putObject: async () => undefined, getObject: async () => undefined }));
 vi.mock("@/features/practice/infrastructure/media-gateway", () => ({
   isMediaGatewayConfigured: () => true,
   authoriseMedia: async (_learnerId: string, media: { id: string; contentHash: string }) => ({ url: `/api/practice/media?token=test-${media.id}`, cacheKey: `media/${media.id}/${media.contentHash}` }),
@@ -31,7 +33,7 @@ async function publishNoteTakingSet(sql: postgres.Sql) {
   const guidanceId = required(await createCurriculumGuidance(lead, { paper: "listening", part: 2, engine: "audio_note_taking", topic: `Family ${suffix}`, taskFormat: `Listen and write ${suffix}`, maxWords: 10, maxOptions: 2, approvedNames: ["Tom"], approvedNumbers: [] }));
   const policy = required(await createAnswerPolicyVersion(lead, { canonicalId: `cat-name-${suffix}`, targetId, guidanceId, paper: "listening", part: 2, engine: "audio_note_taking", inputKind: "name", canonicalAnswer: "Tom", acceptedAnswers: [], maxWords: 1, teacherReviewIfUncertain: false, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, vectors: [{ response: "tom", expectedOutcome: "correct" }, { response: "Sam", expectedOutcome: "incorrect" }] }));
   const scope = { paper: "listening" as const, part: 2, engine: "audio_note_taking" as const, primaryTargetId: targetId, supportingTargetIds: [], topicIds: [topicId], guidanceId, provenance: { source: "Centre-created original content", rightsReference: `centre-${suffix}` } };
-  const mediaId = await createManualMedia(lead, { ...scope, mediaType: "audio", description: "A child says the cat's name", estimatedDurationSeconds: 300, accessibilityMetadata: { altText: "A short recording about a cat" } });
+  const mediaId = await createManualMedia(lead, { ...scope, mediaType: "audio", description: "A child says the cat's name", estimatedDurationSeconds: 300, accessibilityMetadata: { altText: "A short recording about a cat" } }, { bytes: new TextEncoder().encode("RIFF\0\0\0\0WAVEfmt ") });
   const questionId = await createManualQuestion(lead, { ...scope, answerPolicyVersionId: policy.versionId, prompt: "Write the cat's name.", options: ["Listen and write"], estimatedDurationSeconds: 300, accessibilityMetadata: { altText: "Listening question" }, mediaIds: [mediaId] });
   for (const content of [{ kind: "media" as const, targetId: mediaId }, { kind: "question" as const, targetId: questionId }]) {
     await validateContent(lead, content);

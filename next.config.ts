@@ -7,6 +7,8 @@ if (process.env.NODE_ENV === "production") parseServerConfig(process.env);
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  // Staff media uploads go through a Server Action: 15 MB audio plus multipart overhead.
+  experimental: { serverActions: { bodySizeLimit: "16mb" } },
   async headers() {
     return [{
       source: "/(.*)",

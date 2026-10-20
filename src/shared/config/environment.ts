@@ -21,7 +21,12 @@ const serverEnvironmentSchema = z.object({
   AI_IMAGE_MODEL: z.string().min(1).optional(),
   AI_IMAGE_API_KEY: z.string().min(1).optional(),
   MEDIA_BINARY_ORIGIN: providerEndpoint.optional(),
-  MEDIA_SIGNING_SECRET: z.string().min(32).optional()
+  MEDIA_SIGNING_SECRET: z.string().min(32).optional(),
+  // Private S3-compatible bucket (Cloudflare R2) holding media binaries; an explicit MEDIA_BINARY_ORIGIN (read-only test origin) wins.
+  R2_ACCESS_ENDPOINT: providerEndpoint.optional(),
+  R2_ACCESS_KEY: z.string().min(1).optional(),
+  R2_ACCESS_SECRET: z.string().min(1).optional(),
+  BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "must be a bucket name").optional()
 });
 
 export type ServerConfig = z.infer<typeof serverEnvironmentSchema>;

@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "argon2": "^0.45.1",
+    "aws4fetch": "^1.0.20",
     "dotenv": "^16.6.1",
     "drizzle-orm": "0.45.2",
     "jose": "^6.2.1",

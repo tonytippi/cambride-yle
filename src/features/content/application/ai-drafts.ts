@@ -5,6 +5,7 @@ import { generatedMediaOutputSchema, generatedQuestionOutputSchema, generationRe
 import { generatedProvenance, outputHash } from "../domain/provenance";
 import { GatewayError, generate } from "../infrastructure/gateways";
 import * as repository from "../infrastructure/repositories";
+import { storeMediaFile } from "./media-files";
 import { ContentError, draftId, parse, staff, validateQuestionMedia, validateReferences } from "./shared";
 /* AI drafting stays blocked until GATE-AI-DRAFT-PROVIDER is closed; generated output is validated like a manual draft. */
 export async function requestAiDraft(
@@ -64,6 +65,10 @@ export async function requestAiDraft(
         throw new ContentError(error.code, error.message);
       throw error;
     }
+    if (request.kind === "image" && !result.image)
+      throw new ContentError("AI_DRAFT_PROVIDER_INVALID_RESPONSE", "The selected AI draft gateway returned an invalid response.");
+    const file = result.image && (await storeMediaFile("image", { bytes: result.image }));
+    const generatedHash = outputHash(file ? { output: result.output, contentSha256: file.contentSha256 } : result.output);
     const output =
       "answerPolicyVersionId" in request.draft
         ? parse(generatedQuestionOutputSchema, result.output)
@@ -96,7 +101,7 @@ export async function requestAiDraft(
           result.model,
           { staffPrompt: request.staffPrompt },
           permittedReferences,
-          outputHash(result.output),
+          generatedHash,
           tx,
         );
         await repository.recordAudit(
@@ -120,6 +125,7 @@ export async function requestAiDraft(
         "generated",
         tx,
         source,
+        file,
       );
       await repository.recordGeneration(
         kind,
@@ -129,7 +135,7 @@ export async function requestAiDraft(
         result.model,
         { staffPrompt: request.staffPrompt },
         permittedReferences,
-        outputHash(result.output),
+        generatedHash,
         tx,
       );
       await repository.recordAudit(

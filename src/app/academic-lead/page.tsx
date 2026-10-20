@@ -237,7 +237,15 @@ export default async function AcademicLeadHome() {
             <article className="account-card" key={item.id}>
               <h3>Media: {item.mediaType}</h3>
               <p>Status: {item.status}</p>
-              {item.previewUrl && item.mediaType === "image" && (
+              {item.objectKey && item.mediaType === "image" && (
+                // eslint-disable-next-line @next/next/no-img-element -- private, uncached staff preview
+                <img className="staff-media-preview" src={`/api/content/media/${item.id}`} alt={`Uploaded picture: ${item.description}`} width={375} />
+              )}
+              {item.objectKey && item.mediaType === "audio" && (
+                <audio controls preload="none" src={`/api/content/media/${item.id}`} />
+              )}
+              {!item.objectKey && <p className="field-hint">No file uploaded yet. Learners cannot use this media until a file is added in a revision.</p>}
+              {!item.objectKey && item.previewUrl && item.mediaType === "image" && (
                 <Image
                   src={item.previewUrl}
                   alt="Staff media preview"
@@ -245,7 +253,7 @@ export default async function AcademicLeadHome() {
                   height={250}
                 />
               )}
-              {item.previewUrl && item.mediaType === "audio" && (
+              {!item.objectKey && item.previewUrl && item.mediaType === "audio" && (
                 <audio controls src={item.previewUrl} />
               )}
               <p>{item.description}</p>

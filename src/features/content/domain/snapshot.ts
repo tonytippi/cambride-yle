@@ -42,7 +42,8 @@ export function snapshotItemTags(question: SnapshotQuestion, targets: SnapshotTa
   };
 }
 
-export const snapshotMediaHash = (media: { id: string; previewUrl: unknown; description: unknown; provenance: unknown }) =>
+/* The binary digest is part of the hash, so a changed file always yields a new learner cache key. */
+export const snapshotMediaHash = (media: { id: string; previewUrl: unknown; description: unknown; provenance: unknown; contentSha256?: string | null }) =>
   createHash("sha256")
-    .update(JSON.stringify({ id: media.id, previewUrl: media.previewUrl, description: media.description, provenance: media.provenance }))
+    .update(JSON.stringify({ id: media.id, previewUrl: media.previewUrl, description: media.description, provenance: media.provenance, contentSha256: media.contentSha256 ?? undefined }))
     .digest("hex");

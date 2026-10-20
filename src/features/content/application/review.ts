@@ -15,6 +15,7 @@ import {
   type WorkflowInput,
 } from "../domain/contracts";
 import * as repository from "../infrastructure/repositories";
+import { storedFileOf } from "./media-files";
 import { ContentError, contentInput, currentMediaFindings, nonExceptionable, parse, staff, validateReferences, type Transaction } from "./shared";
 /* Review lifecycle: validation, submission, exceptions, phone preview, approval and rejection. */
 const validateStored = async (
@@ -68,6 +69,12 @@ const validateStored = async (
         message: "An answer policy is required.",
       });
   }
+  if (input.kind === "media" && !storedFileOf(item as Awaited<ReturnType<typeof repository.getMedia>>))
+    findings.push({
+      field: "file",
+      code: "MEDIA_FILE_REQUIRED",
+      message: "Upload the picture or sound file learners will use.",
+    });
   if (
     input.kind === "media" &&
     !(
@@ -423,6 +430,7 @@ export async function rejectContent(
             item.origin,
             tx,
             valid.targetId,
+            storedFileOf(item as Awaited<ReturnType<typeof repository.getMedia>>),
           );
     await repository.recordAudit(
       "CONTENT_REJECTED",

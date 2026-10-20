@@ -27,7 +27,7 @@ describe("content actions", () => {
   it("passes media text to the authoritative content use case and revalidates on success", async () => {
     const data = form(); data.set("supportingTargetIds", "018f0000-0000-7000-8000-000000000006"); data.set("description", "  A   cat illustration ");
     await expect(createMediaDraftAction({}, data)).resolves.toEqual({ success: "Media draft saved for academic review." });
-    expect(dependencies.createManualMedia).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ supportingTargetIds: ["018f0000-0000-7000-8000-000000000006"], mediaType: "image", description: "  A   cat illustration " }));
+    expect(dependencies.createManualMedia).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ supportingTargetIds: ["018f0000-0000-7000-8000-000000000006"], mediaType: "image", description: "  A   cat illustration " }), undefined);
   });
   it("passes fixed successful 375px evidence to the phone-preview use case", async () => {
     const data = new FormData(); data.set("kind", "media"); data.set("targetId", "018f0000-0000-7000-8000-000000000009");

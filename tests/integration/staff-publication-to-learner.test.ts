@@ -4,6 +4,8 @@ import postgres from "postgres";
 // The object store is an external boundary; the browser E2E exercises it over HTTPS.
 // Here every published media version is treated as available so the database-backed
 // contract from staff publication to learner evidence is the only behaviour under test.
+// Media files are stored content-addressed in the private object store, which is external here.
+vi.mock("@/infrastructure/storage/object-store", () => ({ isObjectStoreConfigured: () => true, isObjectStoreWritable: () => true, hasObject: async () => true, putObject: async () => undefined, getObject: async () => undefined }));
 vi.mock("@/features/practice/infrastructure/media-gateway", () => ({
   isMediaGatewayConfigured: () => true,
   authoriseMedia: async (_learnerId: string, media: { id: string; contentHash: string }) => ({ url: `/api/practice/media?token=test-${media.id}`, cacheKey: `media/${media.id}/${media.contentHash}` }),
@@ -73,7 +75,7 @@ describe("staff publication to learner evidence", () => {
       const scope = { paper: "reading_writing" as const, part: 1, engine: "picture_true_false" as const, primaryTargetId: targetId, supportingTargetIds: [], topicIds: [topicId], guidanceId, provenance: { source: "Centre-created original content", rightsReference: `centre-${suffix}` } };
 
       // Image media: draft -> validate -> review -> 375px preview -> approve -> publish.
-      const mediaId = await createManualMedia(lead, { ...scope, mediaType: "image", description: "A child holds a ball in a garden", estimatedDurationSeconds: 300, accessibilityMetadata: { altText: "A child in a garden holding a round toy" } });
+      const mediaId = await createManualMedia(lead, { ...scope, mediaType: "image", description: "A child holds a ball in a garden", estimatedDurationSeconds: 300, accessibilityMetadata: { altText: "A child in a garden holding a round toy" } }, { bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]) });
       const media = { kind: "media" as const, targetId: mediaId };
       await expect(validateContent(lead, media)).resolves.toMatchObject({ findings: [] });
       await submitForReview(lead, media);

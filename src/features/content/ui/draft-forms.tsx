@@ -199,6 +199,11 @@ function MediaFields() {
         </select>
       </label>
       <label>
+        Picture or sound file
+        <input name="file" type="file" accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg,audio/mp4" />
+      </label>
+      <p className="field-hint">PNG, JPEG or WebP pictures up to 5 MB; MP3, WAV, OGG or M4A sounds up to 15 MB. A revision keeps the current file unless you choose a new one.</p>
+      <label>
         Preview URL (optional)
         <input name="previewUrl" type="url" />
       </label>

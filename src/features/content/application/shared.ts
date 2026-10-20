@@ -161,6 +161,7 @@ export const nonExceptionable = (findings: ContentFindings) =>
       finding.code === "IMAGE_MEDIA_REQUIRED" ||
       finding.code === "AUDIO_MEDIA_REQUIRED" ||
       finding.code === "NOTE_TAKING_OPTION_REVEALS_ANSWER" ||
+      finding.code === "MEDIA_FILE_REQUIRED" ||
       finding.code.startsWith("CHOICE_LABEL_"),
   );
 export const currentMediaFindings = async (
