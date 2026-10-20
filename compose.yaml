@@ -38,9 +38,9 @@ services:
       GOOGLE_OIDC_REDIRECT_URI: ${APP_ORIGIN:?set APP_ORIGIN in .env}/api/auth/google/callback
     depends_on:
       migrate: { condition: service_completed_successfully }
-    # Bound to loopback only; the Cloudflare tunnel connects to http://127.0.0.1:${APP_PORT:-3000}.
+    # Bound to loopback only; the Cloudflare tunnel connects to http://127.0.0.1:${APP_PORT:-9100}.
     ports:
-      - "127.0.0.1:${APP_PORT:-3000}:3000"
+      - "127.0.0.1:${APP_PORT:-9100}:3000"
 
 volumes:
   db-data:

@@ -9,7 +9,7 @@ import { crc32, deflateSync } from "node:zlib";
  * review and publication, admin learner provisioning, and a learner attempt through review.
  * Staff sign in with Google in production, so their sessions are seeded through the database.
  */
-const baseURL = process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:3000";
+const baseURL = process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:9100";
 const suffix = Date.now().toString(36);
 const psql = (query: string) => execFileSync("docker", ["compose", "exec", "-T", "db", "psql", "-U", "cambridgeyle", "-d", "cambridgeyle", "-tA", "-v", "ON_ERROR_STOP=1"], { input: query, encoding: "utf8" }).trim();
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;

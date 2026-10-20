@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL: process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:9100",
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ?? "/usr/bin/google-chrome" },
   },
 });

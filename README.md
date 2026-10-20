@@ -27,16 +27,16 @@ Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN`, `
 
 ## Chạy nội bộ bằng Docker Compose
 
-`compose.yaml` chạy PostgreSQL 18, một bước migration chạy một lần, và app (Next.js standalone). App chỉ bind vào `127.0.0.1:${APP_PORT:-3000}`; Cloudflare tunnel trỏ vào cổng đó. Media nằm trong bucket R2 private, app đọc/ghi qua S3 API.
+`compose.yaml` chạy PostgreSQL 18, một bước migration chạy một lần, và app (Next.js standalone). App chỉ bind vào `127.0.0.1:${APP_PORT:-9100}`; Cloudflare tunnel trỏ vào cổng đó. Media nằm trong bucket R2 private, app đọc/ghi qua S3 API.
 
 1. Điền `.env` theo `.env.example`: Google OAuth, `ADMIN_EMAILS`, R2 (`R2_ACCESS_ENDPOINT`, `R2_ACCESS_KEY`, `R2_ACCESS_SECRET`, `BUCKET`), `MEDIA_SIGNING_SECRET` (≥32 ký tự), `POSTGRES_PASSWORD`, và AI gateway nếu dùng (`AI_DRAFT_PROVIDER_GATE_CLOSED=true`). Không đặt `MEDIA_BINARY_ORIGIN` khi dùng R2.
-2. Đặt `APP_ORIGIN` là origin HTTPS public của tunnel, ví dụ `https://yle.example.org`, và thêm `<APP_ORIGIN>/api/auth/google/callback` vào Authorized redirect URIs của Google OAuth client.
-3. `docker compose up -d --build`. Kiểm tra: `curl http://127.0.0.1:3000/api/health`.
+2. Đặt `APP_ORIGIN` là origin HTTPS public của tunnel, ví dụ `https://cambridge.passionedu.org`, và thêm `<APP_ORIGIN>/api/auth/google/callback` vào Authorized redirect URIs của Google OAuth client.
+3. `docker compose up -d --build`. Kiểm tra: `curl http://127.0.0.1:9100/api/health`.
 4. Đăng nhập bằng Google với một email trong `ADMIN_EMAILS` để vào `/admin`; admin tạo tài khoản learner (mật khẩu) và staff.
 
 Cập nhật phiên bản: `git pull && docker compose up -d --build` (migration chạy trước khi app khởi động). Sao lưu DB: `docker compose exec -T db pg_dump -U cambridgeyle cambridgeyle > backup-$(date +%F).sql`; khôi phục bằng `psql` vào DB trống. Dữ liệu DB nằm trong volume `cambridgeyle_db-data`; `docker compose down -v` xoá volume này.
 
-Smoke test toàn hệ thống (ghi dữ liệu "Smoke" vào DB và R2, gọi AI thật): `SMOKE_BASE_URL=http://127.0.0.1:3000 npx playwright test -c playwright.smoke.config.ts`.
+Smoke test toàn hệ thống (ghi dữ liệu "Smoke" vào DB và R2, gọi AI thật): `SMOKE_BASE_URL=http://127.0.0.1:9100 npx playwright test -c playwright.smoke.config.ts`.
 
 ## Imported references
 
