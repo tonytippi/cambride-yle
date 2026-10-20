@@ -12,7 +12,7 @@ const dependencies = vi.hoisted(() => {
     redirect: vi.fn((location: string) => { throw new Error(`REDIRECT:${location}`); }),
     logEvent: vi.fn(),
     signInLocally: vi.fn(), signInWithGoogle: vi.fn(), verifyGoogleIdToken: vi.fn(), revokeSession: vi.fn(),
-    repository: { isThrottled: vi.fn(), getAccountByEmail: vi.fn(), recordSignInFailure: vi.fn(), clearSignInFailures: vi.fn(), createSession: vi.fn(), revokeSession: vi.fn(), toActor: vi.fn((account) => ({ id: account.id, email: account.email, displayName: account.displayName, role: account.role })), getGoogleIdentity: vi.fn(), createAccount: vi.fn(), linkGoogleIdentity: vi.fn(), auditOidcProvisioning: vi.fn(), promoteGoogleAdmin: vi.fn() },
+    repository: { isThrottled: vi.fn(), getAccountByEmail: vi.fn(), recordSignInFailure: vi.fn(), clearSignInFailures: vi.fn(), createSession: vi.fn(), revokeSession: vi.fn(), getEndedSessionAccount: vi.fn(), toActor: vi.fn((account) => ({ id: account.id, email: account.email, displayName: account.displayName, role: account.role })), getGoogleIdentity: vi.fn(), createAccount: vi.fn(), linkGoogleIdentity: vi.fn(), auditOidcProvisioning: vi.fn(), promoteGoogleAdmin: vi.fn() },
     verifyPassword: vi.fn(), verifyDummyPassword: vi.fn(),
     transaction: vi.fn(),
     selectAccount: undefined as unknown
@@ -84,10 +84,10 @@ describe("identity I/O matrix without external services", () => {
   it("handles a verified Google callback with no-store session response for both admin and learner actors", async () => {
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub", email: "admin@example.test", displayName: "Admin" }); dependencies.signInWithGoogle.mockResolvedValue({ actor: { ...actor, role: "admin" }, token: "admin-session" });
     const admin = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
-    expect(admin.headers.get("location")).toBe("http://app.test/admin"); expect(admin.headers.get("cache-control")).toContain("no-store"); expect(admin.headers.get("set-cookie")).toContain("cambridgeyle_session=admin-session");
+    expect(admin.headers.get("location")).toBe("/admin"); expect(admin.headers.get("cache-control")).toContain("no-store"); expect(admin.headers.get("set-cookie")).toContain("cambridgeyle_session=admin-session");
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub2", email: "learner@example.test", displayName: "Learner" }); dependencies.signInWithGoogle.mockResolvedValue({ actor, token: "learner-session" });
     const learner = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
-    expect(learner.headers.get("location")).toBe("http://app.test/learner");
+    expect(learner.headers.get("location")).toBe("/learner");
   });
 
   it("uses ADMIN_EMAILS only when provisioning new Google accounts and preserves existing account roles", async () => {
@@ -137,15 +137,30 @@ describe("identity I/O matrix without external services", () => {
   });
 
   it("signs out with 303, clears the cookie, and revokes its server session", async () => {
-    dependencies.cookieJar.values.set("cambridgeyle_session", "opaque-session-token"); const response = await signOut(new Request("http://app.test/api/auth/sign-out", { method: "POST" }) as never);
-    expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("http://app.test/sign-in"); expect(dependencies.repository.revokeSession).toHaveBeenCalledWith("opaque-session-token"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; ");
+    dependencies.cookieJar.values.set("cambridgeyle_session", "opaque-session-token"); const response = await signOut();
+    expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("/sign-in"); expect(dependencies.repository.revokeSession).toHaveBeenCalledWith("opaque-session-token"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; ");
+  });
+
+  it("tells a deactivated learner's device to remove that learner's local data, but not other ended sessions", async () => {
+    dependencies.cookieJar.values.set("cambridgeyle_session", "ended-session");
+    const { createSessionCleanupToken } = await import("@/features/identity/infrastructure/session-cleanup");
+    const request = () => sessionExpired(nextRequest(`http://app.test/api/auth/session-expired?token=${createSessionCleanupToken("ended-session")}`));
+    const accountId = "018f0000-0000-7000-8000-000000000042";
+    dependencies.repository.getEndedSessionAccount.mockResolvedValueOnce({ id: accountId, status: "deactivated", role: "learner" });
+    expect((await request()).headers.get("location")).toBe(`/sign-in?ended=deactivated&account=${accountId}`);
+    dependencies.repository.getEndedSessionAccount.mockResolvedValueOnce({ id: accountId, status: "active", role: "learner" });
+    expect((await request()).headers.get("location")).toBe("/sign-in");
+    dependencies.repository.getEndedSessionAccount.mockResolvedValueOnce({ id: accountId, status: "deactivated", role: "teacher" });
+    expect((await request()).headers.get("location")).toBe("/sign-in");
+    const forged = await sessionExpired(nextRequest("http://app.test/api/auth/session-expired?token=forged"));
+    expect(forged.headers.get("location")).toBe("/sign-in");
   });
 
   it("clears an invalid session cookie before redirecting to sign-in", async () => {
     dependencies.cookieJar.values.set("cambridgeyle_session", "invalid-session");
     const { createSessionCleanupToken } = await import("@/features/identity/infrastructure/session-cleanup");
     const response = await sessionExpired(nextRequest(`http://app.test/api/auth/session-expired?token=${createSessionCleanupToken("invalid-session")}`));
-    expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("http://app.test/sign-in"); expect(response.headers.get("cache-control")).toBe("no-store, max-age=0"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; "); expect(response.headers.get("set-cookie")).toContain("HttpOnly"); expect(response.headers.get("set-cookie")).toContain("Secure"); expect(response.headers.get("set-cookie")).toMatch(/SameSite=lax/i);
+    expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("/sign-in"); expect(response.headers.get("cache-control")).toBe("no-store, max-age=0"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; "); expect(response.headers.get("set-cookie")).toContain("HttpOnly"); expect(response.headers.get("set-cookie")).toContain("Secure"); expect(response.headers.get("set-cookie")).toMatch(/SameSite=lax/i);
   });
 
   it("does not clear a session cookie when its cleanup token is invalid", async () => {

@@ -33,3 +33,11 @@ export async function purgeAccountStorage(accountId: string) {
   ];
   await Promise.allSettled(tasks);
 }
+
+/* Shown on sign-in after the server reports that this device's learner account was deactivated: that learner's drafts and cached media are removed. */
+export function DeactivatedAccountCleanup({ accountId }: { accountId: string }) {
+  useEffect(() => {
+    void purgeAccountStorage(accountId).finally(() => { try { history.replaceState(null, "", "/sign-in"); } catch { /* The notice still shows. */ } });
+  }, [accountId]);
+  return <p className="notice" role="status">This account is closed. Practice saved on this device for it has been removed. Ask your teacher if you need help.</p>;
+}

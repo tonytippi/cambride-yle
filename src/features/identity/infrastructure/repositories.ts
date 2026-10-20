@@ -17,6 +17,12 @@ export async function getActorBySessionToken(token: string, db: Database = datab
   const rows = await db.select({ account: accounts }).from(sessions).innerJoin(accounts, eq(sessions.accountId, accounts.id)).where(and(eq(sessions.verifierHash, verifierHash), isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()), eq(accounts.status, "active"))).limit(1);
   return rows[0] ? toActor(rows[0].account) : undefined;
 }
+/* The account behind a session token even after the session ended, so a device can learn its learner was deactivated. */
+export async function getEndedSessionAccount(token: string, db: Database = database) {
+  if (!token) return undefined;
+  const verifierHash = createHash("sha256").update(token).digest("hex");
+  return (await db.select({ id: accounts.id, status: accounts.status, role: accounts.role }).from(sessions).innerJoin(accounts, eq(sessions.accountId, accounts.id)).where(eq(sessions.verifierHash, verifierHash)).limit(1))[0];
+}
 export async function createSession(accountId: string, db: Database = database) {
   const token = randomBytes(32).toString("base64url");
   const id = uuidv7();

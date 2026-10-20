@@ -5,7 +5,7 @@ import { approveSeededSet, e2eDatabaseUrl, publishSeededSet, resetE2eSchema } fr
 
 const id = () => crypto.randomUUID();
 const fixture = { staffId: id(), approverId: id(), targetId: id(), guidanceId: id(), policyId: id(), policyVersionId: id(), questionId: id(), mediaId: id(), setId: id(), items: { picture: id(), cloze: id(), notes: id() }, wordsSetId: id(), wordItems: { picture: id(), cloze: id() }, soundsSetId: id(), soundItems: { yesNo: id(), choice: id() } };
-const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id(), offlineMedia: id(), switchFrom: id(), switchTo: id(), sounds: id() };
+const learners = { reconnect: id(), reload: id(), unblurred: id(), repeat: id(), accessible: id(), offlineMedia: id(), switchFrom: id(), switchTo: id(), sounds: id(), deactivated: id(), expired: id() };
 const tokens = Object.fromEntries(Object.keys(learners).map((key) => [key, id()])) as Record<keyof typeof learners, string>;
 const policy = (canonicalAnswer: string | boolean, inputKind: string) => ({ canonicalAnswer, acceptedAnswers: [], inputKind, normalisation: { unicode: "NFC", locale: "en-GB", caseSensitive: false, trimWhitespace: true, normalizePunctuation: true, normalizeNumberForms: false }, maxWords: 1, teacherReviewIfUncertain: false, policyId: fixture.policyId, version: 1 });
 
@@ -135,7 +135,13 @@ test("answers recovered from the device draft after a reload are saved before su
     // Leave while offline once the device draft holds the answer, then return online.
     await expect.poll(() => page.evaluate(() => new Promise<string>((resolve) => {
       const opened = indexedDB.open("cambridgeyle-open-attempt-drafts");
-      opened.onsuccess = () => { const all = opened.result.transaction("drafts").objectStore("drafts").getAll(); all.onsuccess = () => { resolve(JSON.stringify(all.result)); opened.result.close(); }; };
+      // Never create the database here: an empty version would hide the app's own schema upgrade.
+    opened.onupgradeneeded = () => opened.transaction?.abort();
+    opened.onerror = () => resolve("");
+    opened.onsuccess = () => {
+      if (!opened.result.objectStoreNames.contains("drafts")) { opened.result.close(); resolve(""); return; }
+      const all = opened.result.transaction("drafts").objectStore("drafts").getAll(); all.onsuccess = () => { resolve(JSON.stringify(all.result)); opened.result.close(); };
+    };
     }))).toContain('"cat"');
     const attemptUrl = page.url();
     await page.close();
@@ -252,7 +258,13 @@ test("the player announces question changes, exposes selected answers and states
 const deviceStorage = (page: Page) => page.evaluate(async () => {
   const drafts = await new Promise<string>((resolve) => {
     const opened = indexedDB.open("cambridgeyle-open-attempt-drafts");
-    opened.onsuccess = () => { const all = opened.result.transaction("drafts").objectStore("drafts").getAll(); all.onsuccess = () => { resolve(JSON.stringify(all.result)); opened.result.close(); }; };
+    // Never create the database here: an empty version would hide the app's own schema upgrade.
+    opened.onupgradeneeded = () => opened.transaction?.abort();
+    opened.onerror = () => resolve("");
+    opened.onsuccess = () => {
+      if (!opened.result.objectStoreNames.contains("drafts")) { opened.result.close(); resolve(""); return; }
+      const all = opened.result.transaction("drafts").objectStore("drafts").getAll(); all.onsuccess = () => { resolve(JSON.stringify(all.result)); opened.result.close(); };
+    };
   });
   return { drafts, caches: await caches.keys() };
 });
@@ -275,6 +287,37 @@ test("cached practice media stays available offline after the service worker res
     await expect.poll(() => page.evaluate(async (url) => { try { return (await fetch(url!)).ok; } catch { return false; } }, source)).toBe(true);
   } finally {
     await context.close();
+  }
+});
+
+test("a deactivated learner's device removes their local practice data, while an expired session keeps unsynced drafts", async ({ browser }) => {
+  const sql = postgres(e2eDatabaseUrl, { max: 1, prepare: false });
+  const deactivated = await openAttempt(browser, "deactivated");
+  const expired = await openAttempt(browser, "expired");
+  try {
+    // Answers stay unsynced on the device while the session ends server-side.
+    for (const { context, page } of [deactivated, expired]) {
+      await context.setOffline(true);
+      await button(page, "True").click();
+    }
+    await expect.poll(async () => (await deviceStorage(deactivated.page)).drafts).toContain(learners.deactivated);
+    await expect.poll(async () => (await deviceStorage(expired.page)).drafts).toContain(learners.expired);
+    await sql`UPDATE accounts SET status = 'deactivated', deactivated_at = now(), deactivated_by = ${fixture.staffId}, updated_at = now() WHERE id = ${learners.deactivated}`;
+    await sql`UPDATE sessions SET revoked_at = now() WHERE account_id IN (${learners.deactivated}, ${learners.expired}) AND revoked_at IS NULL`;
+    for (const { context } of [deactivated, expired]) await context.setOffline(false);
+
+    await deactivated.page.goto("/learner");
+    await expect(deactivated.page.getByText("This account is closed. Practice saved on this device for it has been removed.")).toBeVisible();
+    await expect(deactivated.page).toHaveURL(/\/sign-in$/);
+    await expect.poll(async () => (await deviceStorage(deactivated.page)).drafts).not.toContain(learners.deactivated);
+    expect((await deviceStorage(deactivated.page)).caches.filter((name) => name.includes(learners.deactivated))).toEqual([]);
+
+    await expired.page.goto("/learner");
+    await expect(expired.page).toHaveURL(/\/sign-in$/);
+    await expect(expired.page.getByText("This account is closed.")).toHaveCount(0);
+    expect((await deviceStorage(expired.page)).drafts).toContain(learners.expired);
+  } finally {
+    await Promise.all([deactivated.context.close(), expired.context.close(), sql.end()]);
   }
 });
 
