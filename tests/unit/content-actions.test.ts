@@ -43,7 +43,7 @@ describe("content actions", () => {
       const data = new FormData(); data.set("practiceSetId", id); await action({}, data);
       expect(useCase).toHaveBeenCalledWith(expect.objectContaining({ role: "admin" }), { practiceSetId: id });
     }
-    expect(dependencies.revalidatePath).toHaveBeenCalledWith("/academic-lead");
+    expect(dependencies.revalidatePath).toHaveBeenCalledWith("/academic-lead", "layout");
   });
   it("returns stable findings without revalidation", async () => {
     dependencies.requestAiDraft.mockRejectedValue(Object.assign(new Error("Check findings"), { code: "VALIDATION_FAILED", findings: [{ field: "guidanceId", code: "GUIDANCE_NOT_FOUND", message: "Missing" }] }));

@@ -1,268 +1,65 @@
-import Image from "next/image";
-import { requireRole } from "@/features/identity/ui/session";
-import { getCatalogue } from "@/features/curriculum/application/curriculum";
-import {
-  GuidanceEditForm,
-  GuidanceForm,
-  PolicyForm,
-  TargetEditForm,
-  TargetForm,
-} from "@/features/curriculum/ui/catalogue-forms";
-import { getContentDrafts, getContentReadiness } from "@/features/content/application/content";
-import {
-  ContentDraftForms,
-  ContentWorkflowControls,
-  PracticeSetComposer,
-  PracticeSetWorkflowControls,
-} from "@/features/content/ui/draft-forms";
-import { ReadinessReport } from "@/features/content/ui/readiness-report";
-import { serverConfig } from "@/shared/config/server";
-import {
-  acceptExceptionAction,
-  approveContentAction,
-  createGuidanceAction,
-  createMediaDraftAction,
-  createPolicyAction,
-  createQuestionDraftAction,
-  createTargetAction,
-  phonePreviewAction,
-  publishContentAction,
-  approvePracticeSetAction,
-  createPracticeSetDraftAction,
-  publishPracticeSetAction,
-  rejectContentAction,
-  requestAiDraftAction,
-  retireContentAction,
-  retirePracticeSetAction,
-  submitPracticeSetForReviewAction,
-  submitForReviewAction,
-  updateGuidanceAction,
-  updateTargetAction,
-  validateContentAction,
-} from "./actions";
+import Link from "next/link";
+import { getContentReadiness } from "@/features/content/application/content";
+import { engineLabel } from "@/features/content/ui/labels";
+import { loadWorkspace } from "./workspace";
 
-type Finding = { field: string; code: string; message: string };
+const statuses = ["draft", "in_review", "approved", "published"] as const;
 
-export default async function AcademicLeadHome() {
-  const actor = await requireRole(["academic_lead", "admin"]);
-  const [catalogue, drafts, readiness] = await Promise.all([
-    getCatalogue(actor),
-    getContentDrafts(actor),
-    getContentReadiness(actor),
-  ]);
-  const history = (kind: "question" | "media", id: string) => (
-    <ul className="audit-history" aria-label="Validation and review history">
-      {drafts.validations
-        .filter((record) => record.kind === kind && record.targetId === id)
-        .map((record) => (
-          <li key={record.id}>
-            Validation at {record.createdAt.toISOString()}
-            <ul>
-              {(record.findings as Finding[]).map((finding) => (
-                <li key={`${finding.field}-${finding.code}`}>
-                  {finding.field}: {finding.code} - {finding.message}
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      {drafts.reviews
-        .filter((record) => record.kind === kind && record.targetId === id)
-        .map((record) => (
-          <li key={record.id}>
-            Review: {record.decision}
-            {record.reason ? ` - ${record.reason}` : ""},{" "}
-            {record.createdAt.toISOString()}
-            <ul>
-              {(record.findings as Finding[]).map((finding) => (
-                <li key={`${finding.field}-${finding.code}`}>
-                  {finding.field}: {finding.code} - {finding.message}
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      {kind === "media" &&
-        drafts.previews
-          .filter((record) => record.targetId === id)
-          .map((record) => (
-            <li key={record.id}>
-              Successful {record.viewportWidth}px phone preview,{" "}
-              {record.createdAt.toISOString()}
+export default async function AcademicLeadOverview() {
+  const { actor, drafts, catalogue } = await loadWorkspace();
+  const readiness = await getContentReadiness(actor);
+  const content = [...drafts.questions.map((item) => ({ ...item, kind: "question" as const })), ...drafts.media.map((item) => ({ ...item, kind: "media" as const }))];
+  const count = (status: string) => content.filter((item) => item.status === status).length;
+  const setCount = (status: string) => drafts.sets.filter((set) => set.status === status).length;
+  const covered = readiness.engines.filter((engine) => engine.covered).length;
+  const steps = [
+    { done: catalogue.targets.some((target) => target.category === "topic" && target.isApproved) && catalogue.targets.some((target) => target.category !== "topic" && target.isApproved), label: "Add approved topics and learning objectives", href: "/academic-lead/curriculum" },
+    { done: catalogue.guidance.length > 0, label: "Add task guidance for each task type", href: "/academic-lead/curriculum" },
+    { done: catalogue.policies.some((policy) => policy.currentVersionId), label: "Add answer policies", href: "/academic-lead/curriculum" },
+    { done: drafts.media.some((item) => item.status === "published"), label: "Create and publish pictures and sounds", href: "/academic-lead/content/new?type=media" },
+    { done: drafts.questions.some((item) => item.status === "published"), label: "Create and publish questions", href: "/academic-lead/content/new?type=question" },
+    { done: drafts.sets.some((set) => set.status === "published"), label: "Compose and publish a practice set", href: "/academic-lead/sets" },
+  ];
+  return (
+    <>
+      <h1>Content overview</h1>
+      <p>Drafts are internal until approved and published. This workspace makes no public curriculum claim.</p>
+      <section aria-labelledby="attention-heading" className="staff-section">
+        <h2 id="attention-heading">Needs attention</h2>
+        <ul className="stat-grid">
+          {statuses.map((status) => (
+            <li key={status} className="stat-card">
+              <Link href={`/academic-lead/content?status=${status}`}>
+                <strong>{count(status)}</strong>
+                <span>{status === "draft" ? "drafts to validate and submit" : status === "in_review" ? "items in review" : status === "approved" ? "approved items to publish" : "published items"}</span>
+              </Link>
             </li>
           ))}
-    </ul>
-  );
-  const controls = (
-    kind: "question" | "media",
-    item: {
-      id: string;
-      status: "draft" | "in_review" | "approved" | "published" | "retired";
-      mediaType?: string;
-    },
-  ) => (
-    <>
-      <ContentWorkflowControls
-        kind={kind}
-        mediaType={
-          item.mediaType === "image" || item.mediaType === "audio"
-            ? item.mediaType
-            : undefined
-        }
-        targetId={item.id}
-        status={item.status}
-        validateAction={validateContentAction}
-        submitAction={submitForReviewAction}
-        approveAction={approveContentAction}
-        publishAction={publishContentAction}
-        retireAction={retireContentAction}
-        rejectAction={rejectContentAction}
-        exceptionAction={acceptExceptionAction}
-        previewAction={phonePreviewAction}
-      />
-      {history(kind, item.id)}
-    </>
-  );
-  const publishedQuestions = drafts.questions.filter(
-    (item) => item.status === "published",
-  );
-  const publishedMedia = drafts.media.filter(
-    (item) => item.status === "published",
-  );
-  const targetLabels = new Map(catalogue.targets.map((target) => [target.id, target.canonicalId]));
-
-  return (
-    <main className="shell">
-      <section className="welcome catalogue">
-        <p className="eyebrow">Internal staff content</p>
-        <h1>Curriculum targets, policies and content drafts</h1>
-        <p>
-          Drafts are not approved or published. This workspace does not make a
-          public curriculum claim.
-        </p>
-        <div className="catalogue-grid">
-          <TargetForm action={createTargetAction} />
-          <GuidanceForm action={createGuidanceAction} />
-          <PolicyForm
-            action={createPolicyAction}
-            targets={catalogue.targets}
-            policies={catalogue.policies}
-            guidance={catalogue.guidance}
-          />
-        </div>
-        <h2>Controlled targets</h2>
-        <div className="account-list">
-          {catalogue.targets.map((target) => (
-            <article className="account-card" key={target.id}>
-              <h3>{target.canonicalId}</h3>
-              <p>
-                {target.category} · {target.level} ·{" "}
-                {target.isApproved ? "approved" : "not approved"}
-              </p>
-              <p>{target.guidance}</p>
-              <TargetEditForm action={updateTargetAction} target={target} />
-            </article>
-          ))}
-        </div>
-        <h2>Internal task guidance</h2>
-        <div className="account-list">
-          {catalogue.guidance.map((guidance) => (
-            <article className="account-card" key={guidance.id}>
-              <h3>
-                {guidance.paper.replace("_", " ")} Part {guidance.part}:{" "}
-                {guidance.taskFormat}
-              </h3>
-              <p>
-                {guidance.engine} · {guidance.topic}
-              </p>
-              <GuidanceEditForm
-                action={updateGuidanceAction}
-                guidance={{
-                  ...guidance,
-                  approvedNames: guidance.approvedNames as string[],
-                  approvedNumbers: guidance.approvedNumbers as number[],
-                }}
-              />
-            </article>
-          ))}
-        </div>
-        <h2>Content drafts</h2>
-        <ContentDraftForms
-          questionAction={createQuestionDraftAction}
-          mediaAction={createMediaDraftAction}
-          aiAction={requestAiDraftAction}
-          aiEnabled={serverConfig.AI_DRAFT_PROVIDER_GATE_CLOSED}
-          targets={catalogue.targets}
-          guidance={catalogue.guidance}
-          policies={catalogue.policies}
-          media={drafts.media}
-        />
-        <h2>Practice-set draft composer</h2>
-        <PracticeSetComposer
-          action={createPracticeSetDraftAction}
-          questions={publishedQuestions}
-          media={publishedMedia}
-        />
-        <h2>Pilot content readiness</h2>
-        <ReadinessReport readiness={readiness} targetLabels={targetLabels} />
-        <h2>Practice sets</h2>
-        <div className="account-list">
-          {drafts.sets.map((set) => (
-            <article className="account-card" key={set.id}>
-              <h3>Practice set: {set.title}</h3>
-              <p>ID: {set.id}</p>
-              <p>Status: {set.status}</p>
-              <p>
-                {set.paper.replace("_", " ")} Part {set.part} ·{" "}
-                {set.estimatedDurationSeconds} seconds ·{" "}
-                {(set.primaryTargetIds as string[]).length} primary objective(s)
-              </p>
-              <ul className="audit-history" aria-label="Practice-set review and audit history">
-                {drafts.setReviews.filter((record) => record.practiceSetId === set.id).map((record) => <li key={record.id}>Review: {record.decision}, {record.createdAt.toISOString()}</li>)}
-                {drafts.setAudits.filter((record) => record.practiceSetId === set.id).map((record) => <li key={record.id}>{record.action.replaceAll("_", " ")}, {record.createdAt.toISOString()}</li>)}
-              </ul>
-              <PracticeSetWorkflowControls practiceSetId={set.id} status={set.status} submitAction={submitPracticeSetForReviewAction} approveAction={approvePracticeSetAction} publishAction={publishPracticeSetAction} retireAction={retirePracticeSetAction} />
-            </article>
-          ))}
-        </div>
-        <div className="account-list">
-          {drafts.questions.map((item) => (
-            <article className="account-card" key={item.id}>
-              <h3>Question: {item.engine}</h3>
-              <p>Status: {item.status}</p>
-              <p>{item.prompt}</p>
-              {controls("question", item)}
-            </article>
-          ))}
-          {drafts.media.map((item) => (
-            <article className="account-card" key={item.id}>
-              <h3>Media: {item.mediaType}</h3>
-              <p>Status: {item.status}</p>
-              {item.objectKey && item.mediaType === "image" && (
-                // eslint-disable-next-line @next/next/no-img-element -- private, uncached staff preview
-                <img className="staff-media-preview" src={`/api/content/media/${item.id}`} alt={`Uploaded picture: ${item.description}`} width={375} />
-              )}
-              {item.objectKey && item.mediaType === "audio" && (
-                <audio controls preload="none" src={`/api/content/media/${item.id}`} />
-              )}
-              {!item.objectKey && <p className="field-hint">No file uploaded yet. Learners cannot use this media until a file is added in a revision.</p>}
-              {!item.objectKey && item.previewUrl && item.mediaType === "image" && (
-                <Image
-                  src={item.previewUrl}
-                  alt="Staff media preview"
-                  width={375}
-                  height={250}
-                />
-              )}
-              {!item.objectKey && item.previewUrl && item.mediaType === "audio" && (
-                <audio controls src={item.previewUrl} />
-              )}
-              <p>{item.description}</p>
-              {controls("media", item)}
-            </article>
-          ))}
-        </div>
+          <li className="stat-card">
+            <Link href="/academic-lead/sets">
+              <strong>{setCount("published")}</strong>
+              <span>published practice sets{setCount("draft") + setCount("in_review") + setCount("approved") ? ` · ${setCount("draft") + setCount("in_review") + setCount("approved")} in progress` : ""}</span>
+            </Link>
+          </li>
+          <li className="stat-card">
+            <Link href="/academic-lead/readiness">
+              <strong>{covered} of {readiness.engines.length}</strong>
+              <span>task engines ready for the pilot</span>
+            </Link>
+          </li>
+        </ul>
       </section>
-    </main>
+      <section aria-labelledby="steps-heading" className="staff-section">
+        <h2 id="steps-heading">Getting a practice set to learners</h2>
+        <ol className="step-list">
+          {steps.map((step) => (
+            <li key={step.label} className={step.done ? "done" : undefined}>
+              <span className="step-state">{step.done ? "Done" : "To do"}</span> <Link href={step.href}>{step.label}</Link>
+            </li>
+          ))}
+        </ol>
+        {readiness.engines.some((engine) => !engine.covered) && <p className="field-hint">Not yet ready: {readiness.engines.filter((engine) => !engine.covered).map((engine) => engineLabel(engine.engine)).join(", ")}.</p>}
+      </section>
+    </>
   );
 }
