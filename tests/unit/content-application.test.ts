@@ -20,7 +20,6 @@ const dependencies = vi.hoisted(() => ({
   lockPracticeSet: vi.fn(),
   lockPracticeSetQuestions: vi.fn(),
   recordPracticeSetReview: vi.fn(),
-  hasPracticeSetReviewByActor: vi.fn(),
   updatePracticeSetStatus: vi.fn(),
   beginPracticeSetPublication: vi.fn(),
   getPracticeSet: vi.fn(),
@@ -985,14 +984,15 @@ describe("content draft use cases", () => {
     await expect(createPracticeSetDraft(lead, { title: "Animal picture practice", questionIds: [questionId, questionId] })).rejects.toMatchObject({ findings: expect.arrayContaining([expect.objectContaining({ message: "QUESTION_IDS_DUPLICATE" })]) });
     expect(dependencies.createPracticeSetDraft).not.toHaveBeenCalled();
   });
-  it("records review and approval evidence and rejects self-approval", async () => {
+  it("records review and approval evidence and lets the submitter approve", async () => {
     const set = { id: "018f0000-0000-7000-8000-000000000009", status: "draft" };
     dependencies.lockPracticeSet.mockResolvedValue(set);
     await submitPracticeSetForReview(lead, { practiceSetId: set.id });
     expect(dependencies.recordPracticeSetReview).toHaveBeenCalledWith(set.id, lead.id, "submitted", [], { transaction: "boundary" });
     dependencies.lockPracticeSet.mockResolvedValue({ ...set, status: "in_review" });
-    dependencies.hasPracticeSetReviewByActor.mockResolvedValue(true);
-    await expect(approvePracticeSet(lead, { practiceSetId: set.id })).rejects.toMatchObject({ code: "PRACTICE_SET_SELF_APPROVAL_FORBIDDEN" });
+    await approvePracticeSet(lead, { practiceSetId: set.id });
+    expect(dependencies.recordPracticeSetReview).toHaveBeenCalledWith(set.id, lead.id, "approved", [], { transaction: "boundary" });
+    expect(dependencies.updatePracticeSetStatus).toHaveBeenCalledWith(set.id, "approved", { transaction: "boundary" });
   });
   it.each([
     ["draft", approvePracticeSet, "recordPracticeSetReview"],

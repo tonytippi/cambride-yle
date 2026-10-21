@@ -4,7 +4,7 @@ import { SetComposer, type ComposerQuestion } from "@/features/content/ui/set-co
 import { approvePracticeSetAction, createPracticeSetDraftAction, publishPracticeSetAction, retirePracticeSetAction, submitPracticeSetForReviewAction } from "../actions";
 import { loadWorkspace } from "../workspace";
 
-const steps: Record<string, string> = { draft: "Submit for review", in_review: "Another staff member approves it", approved: "Publish so learners can choose it", published: "Live for learners", retired: "No longer offered; kept as history" };
+const steps: Record<string, string> = { draft: "Submit for review", in_review: "Approve it", approved: "Publish so learners can choose it", published: "Live for learners", retired: "No longer offered; kept as history" };
 
 export default async function PracticeSets() {
   const { drafts, targetName, guidanceOf } = await loadWorkspace();

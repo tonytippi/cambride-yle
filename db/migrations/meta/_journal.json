@@ -232,6 +232,13 @@
       "when": 1789689600000,
       "tag": "0032_retire_practice_attempt_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789776000000,
+      "tag": "0033_allow_practice_set_self_approval",
+      "breakpoints": true
     }
   ]
 }

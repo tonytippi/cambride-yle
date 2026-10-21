@@ -4,7 +4,7 @@ import { connectLocalDatabase } from "./local-database.ts";
 
 type SeedAccount = { email: string; displayName: string; role: "learner" | "teacher" | "academic_lead" | "admin" };
 
-/* One account per role: two staff who can approve each other's sets, and two learners for comparing evidence. */
+/* One account per role: staff for content work, and two learners for comparing evidence. */
 const seedAccounts: SeedAccount[] = [
   { email: "admin@test.local", displayName: "Test Admin", role: "admin" },
   { email: "lead@test.local", displayName: "Test Academic Lead", role: "academic_lead" },

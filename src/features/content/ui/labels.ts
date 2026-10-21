@@ -18,7 +18,7 @@ export const minutes = (seconds: number) => {
 /* The next step each status needs, shown as the primary action in the library. */
 export const nextStepLabels: Record<string, string> = {
   draft: "Validate, then submit for review",
-  in_review: "Another staff member approves or rejects",
+  in_review: "Approve or reject",
   approved: "Publish",
   published: "Live for learners",
   retired: "Kept as history",

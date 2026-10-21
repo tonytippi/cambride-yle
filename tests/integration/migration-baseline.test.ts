@@ -418,9 +418,9 @@ describe("migration baseline", () => {
         await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${submittedId}, ${setId}, ${submitterId}, 'submitted', '[]'::jsonb)`;
         await transaction`UPDATE practice_sets SET status = 'in_review' WHERE id = ${setId}`;
         await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'approved', title = 'Changed' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_METADATA_IMMUTABLE/);
-        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${crypto.randomUUID()}, ${setId}, ${submitterId}, 'approved', '[]'::jsonb)`;
         await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'approved' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_APPROVAL_EVIDENCE_REQUIRED/);
-        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${crypto.randomUUID()}, ${setId}, ${approverId}, 'approved', '[]'::jsonb)`;
+        // The submitter may approve their own set.
+        await transaction`INSERT INTO practice_set_review_records (id, practice_set_id, actor_id, decision, findings) VALUES (${crypto.randomUUID()}, ${setId}, ${submitterId}, 'approved', '[]'::jsonb)`;
         await transaction`UPDATE practice_sets SET status = 'approved' WHERE id = ${setId}`;
         await expect(transaction.savepoint((savepoint) => savepoint`UPDATE practice_sets SET status = 'published' WHERE id = ${setId}`)).rejects.toThrow(/PRACTICE_SET_PUBLICATION_TRANSACTION_REQUIRED/);
         await expect(transaction.savepoint((savepoint) => savepoint`INSERT INTO practice_set_compositions (id, practice_set_id, question_version_id, position) VALUES (${crypto.randomUUID()}, ${setId}, ${crypto.randomUUID()}, 1)`)).rejects.toThrow(/PRACTICE_SET_COMPOSITION_IMMUTABLE/);

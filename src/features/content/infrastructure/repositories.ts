@@ -449,9 +449,6 @@ export async function beginPracticeSetPublication(id: string, db: Database) {
 export async function recordPracticeSetReview(practiceSetId: string, actorId: string, decision: "submitted" | "approved", findings: unknown, db: Database) {
   await db.insert(practiceSetReviewRecords).values({ id: uuidv7(), practiceSetId, actorId, decision, findings });
 }
-export async function hasPracticeSetReviewByActor(practiceSetId: string, actorId: string, decision: "submitted", db: Database) {
-  return Boolean((await db.select({ id: practiceSetReviewRecords.id }).from(practiceSetReviewRecords).where(and(eq(practiceSetReviewRecords.practiceSetId, practiceSetId), eq(practiceSetReviewRecords.actorId, actorId), eq(practiceSetReviewRecords.decision, decision))).limit(1))[0]);
-}
 export async function updatePracticeSetStatus(id: string, status: "in_review" | "approved" | "published" | "retired", db: Database) {
   await db.update(practiceSets).set({ status }).where(eq(practiceSets.id, id));
 }

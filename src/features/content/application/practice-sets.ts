@@ -56,7 +56,6 @@ export async function approvePracticeSet(actor: Actor, input: { practiceSetId: s
     const set = await repository.lockPracticeSet(valid.practiceSetId, tx);
     if (!set) throw new ContentError("PRACTICE_SET_NOT_FOUND", "The practice set was not found.");
     if (set.status !== "in_review") throw new ContentError("CONTENT_TRANSITION_CONFLICT", "Only practice sets in review can be approved.");
-    if (await repository.hasPracticeSetReviewByActor(set.id, actor.id, "submitted", tx)) throw new ContentError("PRACTICE_SET_SELF_APPROVAL_FORBIDDEN", "The submitting staff member cannot approve this practice set.");
     await repository.recordPracticeSetReview(set.id, actor.id, "approved", [], tx);
     await repository.updatePracticeSetStatus(set.id, "approved", tx);
     await repository.recordPracticeSetAudit("PRACTICE_SET_APPROVED", set.id, actor.id, tx);
