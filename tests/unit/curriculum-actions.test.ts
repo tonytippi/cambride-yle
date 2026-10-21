@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const dependencies = vi.hoisted(() => ({ currentActor: vi.fn(), createCurriculumTarget: vi.fn(), revalidatePath: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: dependencies.revalidatePath }));
+vi.mock("@/features/content-library/application/sync", () => ({ scheduleLibraryPush: vi.fn() }));
 vi.mock("@/features/identity/ui/session", () => ({ currentActor: dependencies.currentActor }));
 vi.mock("@/features/curriculum/application/curriculum", () => ({ createCurriculumTarget: dependencies.createCurriculumTarget, createAnswerPolicyVersion: vi.fn(), createCurriculumGuidance: vi.fn(), CurriculumError: class CurriculumError extends Error { code: string; findings = []; constructor(code: string, message: string) { super(message); this.code = code; } } }));
 import { createTargetAction } from "@/app/(staff)/academic-lead/actions";

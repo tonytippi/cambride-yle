@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => ({ currentActor: vi.fn(), requestAiDraft: vi.fn(), revalidatePath: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: dependencies.revalidatePath }));
+vi.mock("@/features/content-library/application/sync", () => ({ scheduleLibraryPush: vi.fn() }));
 vi.mock("@/features/identity/ui/session", () => ({ currentActor: dependencies.currentActor }));
 vi.mock("@/features/curriculum/application/curriculum", () => ({ CurriculumError: class CurriculumError extends Error { code = "FORBIDDEN"; }, createAnswerPolicyVersion: vi.fn(), createCurriculumGuidance: vi.fn(), createCurriculumTarget: vi.fn(), updateCurriculumGuidance: vi.fn(), updateCurriculumTarget: vi.fn() }));
 vi.mock("@/features/content/application/content", () => ({ createManualQuestion: vi.fn(), createManualMedia: vi.fn(), requestAiDraft: dependencies.requestAiDraft, validateContent: vi.fn(), submitForReview: vi.fn(), approveContent: vi.fn(), publishContent: vi.fn(), retireContent: vi.fn(), createPracticeSetDraft: vi.fn(), submitPracticeSetForReview: vi.fn(), approvePracticeSet: vi.fn(), publishPracticeSet: vi.fn(), retirePracticeSet: vi.fn(), rejectContent: vi.fn(), acceptException: vi.fn(), recordPhonePreview: vi.fn() }));

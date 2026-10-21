@@ -6,6 +6,7 @@ const dependencies = vi.hoisted(() => ({
   requestAiDraft: vi.fn(), recordPhonePreview: vi.fn(), revalidatePath: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: dependencies.revalidatePath }));
+vi.mock("@/features/content-library/application/sync", () => ({ scheduleLibraryPush: vi.fn() }));
 vi.mock("@/features/identity/ui/session", () => ({ currentActor: dependencies.currentActor }));
 vi.mock("@/features/curriculum/application/curriculum", () => ({ CurriculumError: class CurriculumError extends Error { code: string; findings = []; constructor(code: string, message: string) { super(message); this.code = code; } }, createAnswerPolicyVersion: vi.fn(), createCurriculumGuidance: vi.fn(), createCurriculumTarget: vi.fn(), updateCurriculumGuidance: vi.fn(), updateCurriculumTarget: vi.fn() }));
 vi.mock("@/features/content/application/content", () => ({

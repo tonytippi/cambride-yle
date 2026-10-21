@@ -130,6 +130,12 @@ flowchart LR
 - **Prevents:** a learner client that cannot later leave the web application, or staff and learner sign-in paths that admit each other's accounts
 - **Rule:** Learner routes live under `src/app/(learner)` and staff routes under `src/app/(staff)`; lint rejects imports from one group into the other and from staff workspace UI into learner routes. Every learner mutation is an `/api/...` route handler over a feature application use-case, never a server action, so a future native client can reuse it. Learners sign in with an admin-set password; staff sign in with Google, and staff password sign-in is refused when `NODE_ENV=production`. Google sign-in never self-registers: it links only to an existing active staff account, or creates the first admin account for an address in `ADMIN_EMAILS`. A separate learner application, token-based sessions and a versioned API are deferred until a native client is approved.
 
+### AD-15 - Content archive in object storage
+
+- **Binds:** content-publication, curriculum, media-and-pwa
+- **Prevents:** losing authored lessons when a development database is reset, or the archive becoming a second runtime source of truth
+- **Rule:** A shared content archive under `content-library/v1/` in private object storage (`CONTENT_LIBRARY_BUCKET`, default the media bucket) holds one JSON file per curriculum record, question/media version and practice set, plus content-addressed copies of media binaries. Content in a version file never changes; only its `status` and approver do, and a push never moves a status backwards. After each successful staff change the server pushes changes after the response; failures never fail the change, and staff can push everything again. PostgreSQL remains the only source the application reads at runtime. Import keeps original version IDs, resolves curriculum by natural key (an existing record wins), and replays the normal `draft -> in_review -> approved -> published -> retired` transitions so database guards still apply; publication materialises a new snapshot locally and adds no archive version. The archive holds no learner, attempt, response or evidence data and is not a database backup.
+
 ## Consistency Conventions
 
 | Concern | Convention |

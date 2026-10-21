@@ -9,6 +9,7 @@ import {
   updateCurriculumTarget,
 } from "@/features/curriculum/application/curriculum";
 import { currentActor } from "@/features/identity/ui/session";
+import { scheduleLibraryPush } from "@/features/content-library/application/sync";
 import type { AnswerValue } from "@/features/curriculum/domain/contracts";
 import { acceptException, approveContent, approvePracticeSet, createManualMedia, createManualQuestion, createPracticeSetDraft, publishContent, publishPracticeSet, recordPhonePreview, rejectContent, requestAiDraft, retireContent, retirePracticeSet, reviseMedia, reviseQuestion, submitForReview, submitPracticeSetForReview, validateContent } from "@/features/content/application/content";
 export type CurriculumActionState = {
@@ -20,6 +21,11 @@ export type CurriculumActionState = {
   success?: string;
 };
 export type ContentActionState = CurriculumActionState;
+/* Every successful change refreshes the workspace and mirrors content to the shared archive afterwards. */
+const contentChanged = () => {
+  revalidatePath("/academic-lead", "layout");
+  scheduleLibraryPush();
+};
 const failure = (error: unknown, fallback: string): CurriculumActionState =>
   error instanceof CurriculumError ||
   (error instanceof Error && "code" in error)
@@ -53,7 +59,7 @@ export async function createTargetAction(
       guidance: String(formData.get("guidance") ?? ""),
       isApproved: formData.get("isApproved") === "on",
     });
-    revalidatePath("/academic-lead", "layout");
+    contentChanged();
     return { success: "Curriculum target saved." };
   } catch (error) {
     return failure(error, "TARGET_SAVE_FAILED");
@@ -73,7 +79,7 @@ export async function updateTargetAction(
         isApproved: formData.get("isApproved") === "on",
       },
     );
-    revalidatePath("/academic-lead", "layout");
+    contentChanged();
     return { success: "Curriculum target updated." };
   } catch (error) {
     return failure(error, "TARGET_UPDATE_FAILED");
@@ -101,7 +107,7 @@ export async function createGuidanceAction(
         .filter(Boolean)
         .map(Number),
     });
-    revalidatePath("/academic-lead", "layout");
+    contentChanged();
     return { success: "Internal guidance saved." };
   } catch (error) {
     return failure(error, "GUIDANCE_SAVE_FAILED");
@@ -133,7 +139,7 @@ export async function updateGuidanceAction(
           .map(Number),
       },
     );
-    revalidatePath("/academic-lead", "layout");
+    contentChanged();
     return { success: "Internal guidance updated." };
   } catch (error) {
     return failure(error, "GUIDANCE_UPDATE_FAILED");
@@ -226,7 +232,7 @@ export async function createPolicyAction(
       teacherReviewIfUncertain,
       vectors,
     });
-    revalidatePath("/academic-lead", "layout");
+    contentChanged();
     return { success: "A new immutable answer-policy version was saved." };
   } catch (error) {
     return failure(error, "POLICY_SAVE_FAILED");
@@ -241,7 +247,7 @@ export async function createQuestionDraftAction(_: ContentActionState, formData:
     };
     if (sourceId) await reviseQuestion(actor, sourceId, draft);
     else await createManualQuestion(actor, draft);
-    revalidatePath("/academic-lead", "layout"); return { success: sourceId ? "Question draft revision saved for academic review." : "Question draft saved for academic review." };
+    contentChanged(); return { success: sourceId ? "Question draft revision saved for academic review." : "Question draft saved for academic review." };
   } catch (error) { return failure(error, "CONTENT_DRAFT_SAVE_FAILED"); }
 }
 const contentBase = (formData: FormData) => ({ paper: String(formData.get("paper")) as "listening", part: Number(formData.get("part")), engine: String(formData.get("engine")) as "picture_true_false", primaryTargetId: String(formData.get("primaryTargetId")), supportingTargetIds: listed(formData, "supportingTargetIds"), topicIds: [String(formData.get("topicId"))], guidanceId: String(formData.get("guidanceId")), evidenceDimensions: { spelling: values(formData, "spelling"), colours: values(formData, "colours"), positions: values(formData, "positions") }, estimatedDurationSeconds: Number(formData.get("estimatedDurationSeconds")), accessibilityMetadata: { altText: String(formData.get("altText")), ...(String(formData.get("choiceLabel") ?? "").trim() ? { choiceLabel: String(formData.get("choiceLabel")).trim() } : {}) }, provenance: { source: String(formData.get("source")), rightsReference: String(formData.get("rightsReference")) } });
@@ -251,23 +257,23 @@ const values = (formData: FormData, name: string) => String(formData.get(name) ?
 const hint = (formData: FormData) => { const message = String(formData.get("postSubmitHint") ?? "").trim(); return message ? { locale: "en-GB" as const, message } : undefined; };
 const mediaIds = (formData: FormData) => formData.getAll("mediaIds").flatMap((value) => String(value).split(/[\s,]+/)).map((id) => id.trim()).filter(Boolean);
 const uploadOf = async (formData: FormData) => { const file = formData.get("file"); return file instanceof File && file.size > 0 ? { bytes: new Uint8Array(await file.arrayBuffer()) } : undefined; };
-export async function createMediaDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const actor = await actorFor(); const sourceId = String(formData.get("sourceId") || "") || undefined; const draft = { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const upload = await uploadOf(formData); if (sourceId) await reviseMedia(actor, sourceId, draft, upload); else await createManualMedia(actor, draft, upload); revalidatePath("/academic-lead", "layout"); return { success: sourceId ? "Media draft revision saved for academic review." : "Media draft saved for academic review." }; } catch (error) { return failure(error, "MEDIA_DRAFT_SAVE_FAILED"); } }
-export async function requestAiDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const draft = formData.get("draftType") === "question" ? { ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((value) => value.trim()).filter(Boolean), postSubmitHint: hint(formData), mediaIds: mediaIds(formData) } : { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const permittedReferences = formData.getAll("permittedReferences").flatMap((value) => String(value).split("\n")).map((line) => line.trim()).filter(Boolean).map((line) => { const [id, ...description] = line.split("|"); return { id: id!.trim(), description: description.join("|").trim() }; }); const sourceId = String(formData.get("sourceId") || "") || undefined; await requestAiDraft(await actorFor(), { kind: String(formData.get("kind")) as "text", staffPrompt: String(formData.get("staffPrompt")), permittedReferences, draft } as never, sourceId); revalidatePath("/academic-lead", "layout"); return { success: sourceId ? "AI draft rerun saved for academic review." : "Generated draft saved for academic review." }; } catch (error) { return failure(error, "AI_DRAFT_REQUEST_FAILED"); } }
+export async function createMediaDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const actor = await actorFor(); const sourceId = String(formData.get("sourceId") || "") || undefined; const draft = { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const upload = await uploadOf(formData); if (sourceId) await reviseMedia(actor, sourceId, draft, upload); else await createManualMedia(actor, draft, upload); contentChanged(); return { success: sourceId ? "Media draft revision saved for academic review." : "Media draft saved for academic review." }; } catch (error) { return failure(error, "MEDIA_DRAFT_SAVE_FAILED"); } }
+export async function requestAiDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const draft = formData.get("draftType") === "question" ? { ...contentBase(formData), answerPolicyVersionId: String(formData.get("answerPolicyVersionId")), prompt: String(formData.get("prompt")), options: String(formData.get("options")).split("\n").map((value) => value.trim()).filter(Boolean), postSubmitHint: hint(formData), mediaIds: mediaIds(formData) } : { ...contentBase(formData), mediaType: String(formData.get("mediaType")) as "image", previewUrl: String(formData.get("previewUrl") || "") || undefined, description: String(formData.get("description")) }; const permittedReferences = formData.getAll("permittedReferences").flatMap((value) => String(value).split("\n")).map((line) => line.trim()).filter(Boolean).map((line) => { const [id, ...description] = line.split("|"); return { id: id!.trim(), description: description.join("|").trim() }; }); const sourceId = String(formData.get("sourceId") || "") || undefined; await requestAiDraft(await actorFor(), { kind: String(formData.get("kind")) as "text", staffPrompt: String(formData.get("staffPrompt")), permittedReferences, draft } as never, sourceId); contentChanged(); return { success: sourceId ? "AI draft rerun saved for academic review." : "Generated draft saved for academic review." }; } catch (error) { return failure(error, "AI_DRAFT_REQUEST_FAILED"); } }
 const workflow = (formData: FormData) => ({ kind: String(formData.get("kind")) as "question", targetId: String(formData.get("targetId")) });
 // eslint-disable-next-line no-unused-vars
-const workflowAction = (useCase: (_actor: Awaited<ReturnType<typeof actorFor>>, _input: never) => Promise<unknown>, success: string) => async (_: ContentActionState, formData: FormData): Promise<ContentActionState> => { try { await useCase(await actorFor(), workflow(formData) as never); revalidatePath("/academic-lead", "layout"); return { success }; } catch (error) { return failure(error, "CONTENT_WORKFLOW_FAILED"); } };
+const workflowAction = (useCase: (_actor: Awaited<ReturnType<typeof actorFor>>, _input: never) => Promise<unknown>, success: string) => async (_: ContentActionState, formData: FormData): Promise<ContentActionState> => { try { await useCase(await actorFor(), workflow(formData) as never); contentChanged(); return { success }; } catch (error) { return failure(error, "CONTENT_WORKFLOW_FAILED"); } };
 export const validateContentAction = workflowAction(validateContent, "Validation findings recorded.");
 export const submitForReviewAction = workflowAction(submitForReview, "Content submitted for review.");
 export const approveContentAction = workflowAction(approveContent, "Content approved.");
 export const publishContentAction = workflowAction(publishContent, "Content published.");
 export const retireContentAction = workflowAction(retireContent, "Content retired.");
-export async function phonePreviewAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await recordPhonePreview(await actorFor(), { ...workflow(formData), viewportWidth: 375, successful: true }); revalidatePath("/academic-lead", "layout"); return { success: "375px phone preview confirmed." }; } catch (error) { return failure(error, "CONTENT_PHONE_PREVIEW_FAILED"); } }
-export async function acceptExceptionAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await acceptException(await actorFor(), { ...workflow(formData), reason: String(formData.get("reason")) }); revalidatePath("/academic-lead", "layout"); return { success: "Exception recorded with its review evidence." }; } catch (error) { return failure(error, "CONTENT_EXCEPTION_FAILED"); } }
-export async function rejectContentAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const revisionId = await rejectContent(await actorFor(), { ...workflow(formData), reason: String(formData.get("reason")) }); revalidatePath("/academic-lead", "layout"); return { success: `Content rejected. Linked draft revision: ${revisionId}` }; } catch (error) { return failure(error, "CONTENT_REJECTION_FAILED"); } }
-export async function createPracticeSetDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const questionIds = listed(formData, "questionIds"); const id = await createPracticeSetDraft(await actorFor(), { title: String(formData.get("title") ?? ""), questionIds }); revalidatePath("/academic-lead", "layout"); return { success: `Practice set draft created: ${id}` }; } catch (error) { return failure(error, "PRACTICE_SET_DRAFT_FAILED"); } }
+export async function phonePreviewAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await recordPhonePreview(await actorFor(), { ...workflow(formData), viewportWidth: 375, successful: true }); contentChanged(); return { success: "375px phone preview confirmed." }; } catch (error) { return failure(error, "CONTENT_PHONE_PREVIEW_FAILED"); } }
+export async function acceptExceptionAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await acceptException(await actorFor(), { ...workflow(formData), reason: String(formData.get("reason")) }); contentChanged(); return { success: "Exception recorded with its review evidence." }; } catch (error) { return failure(error, "CONTENT_EXCEPTION_FAILED"); } }
+export async function rejectContentAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const revisionId = await rejectContent(await actorFor(), { ...workflow(formData), reason: String(formData.get("reason")) }); contentChanged(); return { success: `Content rejected. Linked draft revision: ${revisionId}` }; } catch (error) { return failure(error, "CONTENT_REJECTION_FAILED"); } }
+export async function createPracticeSetDraftAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { const questionIds = listed(formData, "questionIds"); const id = await createPracticeSetDraft(await actorFor(), { title: String(formData.get("title") ?? ""), questionIds }); contentChanged(); return { success: `Practice set draft created: ${id}` }; } catch (error) { return failure(error, "PRACTICE_SET_DRAFT_FAILED"); } }
 // eslint-disable-next-line no-unused-vars
-const practiceSetWorkflow = (useCase: (_actor: Awaited<ReturnType<typeof actorFor>>, _input: { practiceSetId: string }) => Promise<unknown>, success: string) => async (_: ContentActionState, formData: FormData): Promise<ContentActionState> => { try { await useCase(await actorFor(), { practiceSetId: String(formData.get("practiceSetId")) }); revalidatePath("/academic-lead", "layout"); return { success }; } catch (error) { return failure(error, "PRACTICE_SET_WORKFLOW_FAILED"); } };
+const practiceSetWorkflow = (useCase: (_actor: Awaited<ReturnType<typeof actorFor>>, _input: { practiceSetId: string }) => Promise<unknown>, success: string) => async (_: ContentActionState, formData: FormData): Promise<ContentActionState> => { try { await useCase(await actorFor(), { practiceSetId: String(formData.get("practiceSetId")) }); contentChanged(); return { success }; } catch (error) { return failure(error, "PRACTICE_SET_WORKFLOW_FAILED"); } };
 export const submitPracticeSetForReviewAction = practiceSetWorkflow(submitPracticeSetForReview, "Practice set submitted for review.");
 export const approvePracticeSetAction = practiceSetWorkflow(approvePracticeSet, "Practice set approved.");
 export const publishPracticeSetAction = practiceSetWorkflow(publishPracticeSet, "Practice set published.");
-export async function retirePracticeSetAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await retirePracticeSet(await actorFor(), { practiceSetId: String(formData.get("practiceSetId")) }); revalidatePath("/academic-lead", "layout"); return { success: "Practice set retired." }; } catch (error) { return failure(error, "PRACTICE_SET_RETIRE_FAILED"); } }
+export async function retirePracticeSetAction(_: ContentActionState, formData: FormData): Promise<ContentActionState> { try { await retirePracticeSet(await actorFor(), { practiceSetId: String(formData.get("practiceSetId")) }); contentChanged(); return { success: "Practice set retired." }; } catch (error) { return failure(error, "PRACTICE_SET_RETIRE_FAILED"); } }

@@ -26,7 +26,9 @@ const serverEnvironmentSchema = z.object({
   R2_ACCESS_ENDPOINT: providerEndpoint.optional(),
   R2_ACCESS_KEY: z.string().min(1).optional(),
   R2_ACCESS_SECRET: z.string().min(1).optional(),
-  BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "must be a bucket name").optional()
+  BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "must be a bucket name").optional(),
+  // Optional bucket for the shared content library; defaults to BUCKET.
+  CONTENT_LIBRARY_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "must be a bucket name").optional()
 });
 
 export type ServerConfig = z.infer<typeof serverEnvironmentSchema>;

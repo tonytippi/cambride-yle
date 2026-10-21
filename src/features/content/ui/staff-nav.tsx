@@ -10,6 +10,7 @@ const staffLinks: NavLink[] = [
   { href: "/academic-lead/sets", label: "Practice sets" },
   { href: "/academic-lead/curriculum", label: "Curriculum" },
   { href: "/academic-lead/readiness", label: "Pilot readiness" },
+  { href: "/academic-lead/archive", label: "Content archive" },
   { href: "/teacher", label: "Learner evidence" },
 ];
 
