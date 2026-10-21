@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useState } from "react";
-import type { ContentActionState } from "@/app/academic-lead/actions";
+import type { ContentActionState } from "@/app/(staff)/academic-lead/actions";
 import { engineLabel, minutes, paperLabel } from "./labels";
 
 /* eslint-disable no-unused-vars */

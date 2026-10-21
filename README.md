@@ -25,6 +25,17 @@ Core P0 đã implement và chạy được nội bộ (Docker Compose, xem bên 
 
 Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN`, `GATE-DATA-GOVERNANCE` và `GATE-PRODUCT-ASSUMPTIONS` đã đóng: teacher-facing curriculum/assessment guidance là nguồn tạo/review content, mỗi set được `academic_lead`/`admin` phê duyệt riêng, P0 không xử lý yêu cầu xóa dữ liệu, và browser matrix đã được chấp thuận. P0 bảo toàn deactivation-with-retention, immutable publication/attempt snapshots, server-authoritative deterministic scoring, post-submit-only review, WCAG 2.2 AA và British English trong technical artefacts.
 
+## Chạy local để phát triển
+
+`.env` trỏ tới một PostgreSQL local. `npm run dev` chạy ở `http://localhost:3001`.
+
+- `npm run db:reset`: xoá toàn bộ dữ liệu, chạy lại mọi migration rồi seed tài khoản test (hỏi xác nhận bằng tên DB; `-- --yes` để bỏ qua, `-- --no-seed` để không seed).
+- `npm run db:seed`: thêm tài khoản test nếu chưa có: `admin@`, `lead@`, `teacher@`, `learner1@`, `learner2@test.local`, mật khẩu `cambridge-local-test` (đổi bằng `SEED_PASSWORD`).
+
+Hai script chỉ chạy khi host của `DATABASE_URL` là localhost và `NODE_ENV` khác `production`.
+
+Learner đăng nhập ở `/sign-in` (chỉ mật khẩu). Staff đăng nhập ở `/staff/sign-in` bằng Google; ngoài production trang này có thêm form mật khẩu để dùng tài khoản seed.
+
 ## Chạy nội bộ bằng Docker Compose
 
 `compose.yaml` chạy PostgreSQL 18, một bước migration chạy một lần, và app (Next.js standalone). App chỉ bind vào `127.0.0.1:${APP_PORT:-9100}`; Cloudflare tunnel trỏ vào cổng đó. Media nằm trong bucket R2 private, app đọc/ghi qua S3 API.
@@ -32,7 +43,7 @@ Không artifact nào được tự đóng các gate này. `GATE-CONTENT-PLAN`, `
 1. Tạo `.env.production` từ `.env.production.example` (không commit file này; `.env` chỉ dùng cho dev và test). Điền Google OAuth, `ADMIN_EMAILS` (danh sách email được quyền admin khi đăng nhập Google, cách nhau bởi dấu phẩy), `POSTGRES_PASSWORD` cùng `DATABASE_URL` dùng đúng mật khẩu đó, R2, `MEDIA_SIGNING_SECRET` (≥32 ký tự) và AI gateway nếu dùng (`AI_DRAFT_PROVIDER_GATE_CLOSED=true`). Không đặt `MEDIA_BINARY_ORIGIN` khi dùng R2.
 2. `GOOGLE_OIDC_REDIRECT_URI` là `https://cambridge.passionedu.org/api/auth/google/callback`; thêm đúng URI này vào Authorized redirect URIs của Google OAuth client. Cloudflare tunnel trỏ `cambridge.passionedu.org` tới `http://127.0.0.1:9100`.
 3. `docker compose up -d --build`. Kiểm tra: `curl http://127.0.0.1:9100/api/health`.
-4. Đăng nhập bằng Google với một email trong `ADMIN_EMAILS` để vào `/admin`; admin tạo tài khoản learner (mật khẩu) và staff.
+4. Vào `/staff/sign-in`, đăng nhập bằng Google với một email trong `ADMIN_EMAILS` để vào `/admin`. Admin tạo tài khoản learner (bắt buộc mật khẩu; learner đăng nhập ở `/sign-in`) và staff (đăng nhập bằng Google đúng email đã tạo; production không nhận mật khẩu staff). Google sign-in không tự tạo tài khoản cho email khác.
 
 Cập nhật phiên bản: `git pull && docker compose up -d --build` (migration chạy trước khi app khởi động). Sau khi sửa `.env.production`, chạy lại `docker compose up -d` để app nhận cấu hình mới. Sao lưu DB: `docker compose exec -T db pg_dump -U cambridgeyle cambridgeyle > backup-$(date +%F).sql`; khôi phục bằng `psql` vào DB trống. Dữ liệu DB nằm trong volume `cambridgeyle_db-data`; `docker compose down -v` xoá volume này.
 

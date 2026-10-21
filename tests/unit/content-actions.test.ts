@@ -15,7 +15,7 @@ vi.mock("@/features/content/application/content", () => ({
   approvePracticeSet: dependencies.approvePracticeSet, publishPracticeSet: dependencies.publishPracticeSet, retirePracticeSet: vi.fn(),
   rejectContent: vi.fn(), acceptException: vi.fn(), recordPhonePreview: dependencies.recordPhonePreview,
 }));
-import { approvePracticeSetAction, createMediaDraftAction, createPracticeSetDraftAction, phonePreviewAction, publishPracticeSetAction, requestAiDraftAction, submitPracticeSetForReviewAction } from "@/app/academic-lead/actions";
+import { approvePracticeSetAction, createMediaDraftAction, createPracticeSetDraftAction, phonePreviewAction, publishPracticeSetAction, requestAiDraftAction, submitPracticeSetForReviewAction } from "@/app/(staff)/academic-lead/actions";
 
 const form = () => {
   const data = new FormData();

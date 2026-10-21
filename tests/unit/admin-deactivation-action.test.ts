@@ -5,7 +5,7 @@ vi.mock("next/cache", () => ({ revalidatePath: dependencies.revalidatePath }));
 vi.mock("@/features/identity/ui/session", () => ({ currentActor: dependencies.currentActor }));
 vi.mock("@/features/identity/application/auth", () => ({ deactivateCentreAccount: dependencies.deactivateCentreAccount, IdentityError: class IdentityError extends Error { code = "LAST_ACTIVE_ADMIN"; } }));
 
-import { deactivateAccountAction } from "@/app/admin/actions";
+import { deactivateAccountAction } from "@/app/(staff)/admin/actions";
 
 const accountId = "018f0000-0000-7000-8000-000000000002";
 const actor = { id: "018f0000-0000-7000-8000-000000000001", email: "admin@example.test", displayName: "Admin", role: "admin" as const };

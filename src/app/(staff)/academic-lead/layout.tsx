@@ -14,7 +14,7 @@ export default async function AcademicLeadLayout({ children }: { children: React
         </div>
         <SignOutButton accountId={actor.id} />
       </header>
-      <StaffNav />
+      <StaffNav extraLinks={actor.role === "admin" ? [{ href: "/admin", label: "Accounts" }] : []} />
       <main className="staff-main">{children}</main>
     </div>
   );

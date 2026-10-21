@@ -11,12 +11,14 @@ describe("protected routing", () => {
   beforeEach(() => { vi.clearAllMocks(); dependencies.cookie.mockReturnValue(undefined); });
   it("redirects an anonymous protected request to sign-in without reading protected data", async () => {
     dependencies.getActorBySessionToken.mockResolvedValue(undefined);
-    await expect(requireRole(["admin"])).rejects.toThrow("REDIRECT:/sign-in");
+    await expect(requireRole(["admin"])).rejects.toThrow("REDIRECT:/staff/sign-in");
     expect(dependencies.getActorBySessionToken).toHaveBeenCalledWith("");
+    await expect(requireRole(["learner"])).rejects.toThrow(/^REDIRECT:\/sign-in$/);
   });
   it("clears an invalid session through the expiry route before returning to sign-in", async () => {
     dependencies.cookie.mockReturnValue({ value: "expired-session" }); dependencies.getActorBySessionToken.mockResolvedValue(undefined);
     await expect(requireRole(["admin"])).rejects.toThrow(/^REDIRECT:\/api\/auth\/session-expired\?token=/);
+    await expect(requireRole(["admin"])).rejects.toThrow(/&audience=staff$/);
     expect(dependencies.getActorBySessionToken).toHaveBeenCalledWith("expired-session");
   });
   it("redirects a wrong-role actor to its role home with the exact denial notice", async () => {

@@ -3,7 +3,7 @@ const dependencies = vi.hoisted(() => ({ currentActor: vi.fn(), createAnswerPoli
 vi.mock("next/cache", () => ({ revalidatePath: dependencies.revalidatePath }));
 vi.mock("@/features/identity/ui/session", () => ({ currentActor: dependencies.currentActor }));
 vi.mock("@/features/curriculum/application/curriculum", () => ({ createAnswerPolicyVersion: dependencies.createAnswerPolicyVersion, createCurriculumGuidance: vi.fn(), createCurriculumTarget: vi.fn(), updateCurriculumGuidance: vi.fn(), updateCurriculumTarget: vi.fn(), CurriculumError: class CurriculumError extends Error { code: string; findings: unknown[]; constructor(code: string, message: string, findings: unknown[] = []) { super(message); this.code = code; this.findings = findings; } } }));
-import { createPolicyAction } from "@/app/academic-lead/actions";
+import { createPolicyAction } from "@/app/(staff)/academic-lead/actions";
 const form = (kind: string, answer: string) => { const data = new FormData(); data.set("canonicalId", "policy-one"); data.set("targetId", "018f0000-0000-7000-8000-000000000002"); data.set("guidanceId", "018f0000-0000-7000-8000-000000000003"); data.set("paper", "reading_writing"); data.set("part", "1"); data.set("engine", kind === "boolean" ? "picture_true_false" : "audio_note_taking"); data.set("inputKind", kind); data.set("canonicalAnswer", answer); data.set("maxWords", "1"); data.set("vector-correct", answer); data.set("vector-incorrect", kind === "boolean" ? "false" : "2"); data.set("vector-needs_teacher_review", "too many words"); return data; };
 describe("policy action parsing", () => {
   beforeEach(() => { vi.clearAllMocks(); dependencies.currentActor.mockResolvedValue({ id: "018f0000-0000-7000-8000-000000000001", role: "academic_lead" }); });

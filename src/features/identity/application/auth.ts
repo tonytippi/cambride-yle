@@ -8,18 +8,26 @@ import type { VerifiedGoogleIdentity } from "../infrastructure/oidc";
 
 export class IdentityError extends Error { readonly code: string; constructor(code: string, message: string) { super(message); this.code = code; } }
 export const roleHome = (role: Role) => `/${role === "academic_lead" ? "academic-lead" : role}`;
+/* Learners and staff enter through separate sign-in pages; each page only admits its own audience. */
+export type SignInAudience = "learner" | "staff";
+export const audienceOf = (role: Role): SignInAudience => role === "learner" ? "learner" : "staff";
+export const signInPath = (audience: SignInAudience) => audience === "staff" ? "/staff/sign-in" : "/sign-in";
+/* Staff sign in with Google; a staff password is accepted only outside production, for local development and tests. */
+export const staffPasswordSignInEnabled = () => process.env.NODE_ENV !== "production";
 export function authorise(actor: Actor, allowed: Role[]) { if (!allowed.includes(actor.role)) throw new IdentityError("FORBIDDEN", "You do not have access to that page."); }
 
-export async function signInLocally(email: string, password: string, origin: string) {
+export async function signInLocally(email: string, password: string, origin: string, audience: SignInAudience = "learner") {
+  if (audience === "staff" && !staffPasswordSignInEnabled()) throw new IdentityError(genericSignInError.code, genericSignInError.message);
   if (await repository.isThrottled(email, origin)) throw new IdentityError(genericSignInError.code, genericSignInError.message);
   const account = await repository.getAccountByEmail(email);
   const valid = account?.status === "active" && account.passwordHash ? await verifyPassword(account.passwordHash, password) : (await verifyDummyPassword(password), false);
-  if (!valid || !account) { await repository.recordSignInFailure(email, origin); throw new IdentityError(genericSignInError.code, genericSignInError.message); }
+  // A correct password on the other audience's page fails exactly like a wrong one, so the page does not reveal an account's role.
+  if (!valid || !account || audienceOf(account.role) !== audience) { await repository.recordSignInFailure(email, origin); throw new IdentityError(genericSignInError.code, genericSignInError.message); }
   try { const token = await repository.createSession(account.id); await repository.clearSignInFailures(email, origin); return { actor: repository.toActor(account), token }; }
   catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError(genericSignInError.code, genericSignInError.message); throw error; }
 }
-export async function createCentreAccount(actor: Actor, input: { email: string; displayName: string; password: string; role: Role }) {
-  authorise(actor, ["admin"]); return database.transaction(async (tx) => repository.createAccount({ email: input.email, displayName: input.displayName, role: input.role, passwordHash: await hashPassword(input.password) }, actor.id, tx));
+export async function createCentreAccount(actor: Actor, input: { email: string; displayName: string; password?: string; role: Role }) {
+  authorise(actor, ["admin"]); const passwordHash = input.password ? await hashPassword(input.password) : undefined; return database.transaction(async (tx) => repository.createAccount({ email: input.email, displayName: input.displayName, role: input.role, passwordHash }, actor.id, tx));
 }
 export async function deactivateCentreAccount(actor: Actor, input: { accountId: string; confirmation: string }) {
   authorise(actor, ["admin"]);
@@ -50,13 +58,15 @@ export async function getCentreAccountDetail(actor: Actor, accountId: string) { 
 export async function signInWithGoogle(identity: VerifiedGoogleIdentity, adminEmails: string[]) {
   return database.transaction(async (tx) => {
     const linked = await repository.getGoogleIdentity(identity.subject, tx);
-    if (linked) { const account = (await tx.select().from(accounts).where(eq(accounts.id, linked.accountId)).limit(1))[0]; if (!account || account.status !== "active" || canonicalEmail(account.email) !== canonicalEmail(identity.email)) throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); try { return { actor: repository.toActor(account), token: await repository.createSession(account.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; } }
+    if (linked) { const account = (await tx.select().from(accounts).where(eq(accounts.id, linked.accountId)).limit(1))[0]; if (!account || account.status !== "active" || account.role === "learner" || canonicalEmail(account.email) !== canonicalEmail(identity.email)) throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); try { return { actor: repository.toActor(account), token: await repository.createSession(account.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; } }
     const existing = await repository.getAccountByEmail(identity.email, tx);
     if (existing) {
-      if (existing.status !== "active") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google.");
+      if (existing.status !== "active" || existing.role === "learner") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google.");
       try { await repository.linkGoogleIdentity(identity.subject, existing.id, tx); return { actor: repository.toActor(existing), token: await repository.createSession(existing.id, tx) }; } catch (error) { if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google."); throw error; }
     }
-    const id = await repository.createAccount({ email: identity.email, displayName: identity.displayName, role: adminEmails.includes(identity.email) ? "admin" : "learner" }, undefined, tx);
+    // Google sign-in is staff-only and never self-registers: only a configured admin email may create its first account.
+    if (!adminEmails.includes(canonicalEmail(identity.email))) throw new IdentityError("GOOGLE_SIGN_IN_FAILED", "We could not sign you in with Google.");
+    const id = await repository.createAccount({ email: identity.email, displayName: identity.displayName, role: "admin" }, undefined, tx);
     await repository.linkGoogleIdentity(identity.subject, id, tx); await repository.auditOidcProvisioning(id, tx); const account = (await tx.select().from(accounts).where(eq(accounts.id, id)).limit(1))[0]!; return { actor: repository.toActor(account), token: await repository.createSession(id, tx) };
   });
 }

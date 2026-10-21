@@ -1,7 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import type { ReactNode } from "react";
-import type { ContentActionState } from "@/app/academic-lead/actions";
+import type { ContentActionState } from "@/app/(staff)/academic-lead/actions";
 /* eslint-disable no-unused-vars */
 type Action = (
   state: ContentActionState,

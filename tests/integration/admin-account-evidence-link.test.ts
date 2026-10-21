@@ -7,7 +7,7 @@ vi.mock("@/features/identity/application/auth", () => ({ getCentreAccountDetail:
 vi.mock("@/features/identity/ui/deactivate-account-form", () => ({ DeactivateAccountForm: () => null }));
 vi.mock("@/features/identity/ui/change-account-role-form", () => ({ ChangeAccountRoleForm: () => null }));
 
-import AccountDetailPage from "@/app/admin/accounts/[accountId]/page";
+import AccountDetailPage from "@/app/(staff)/admin/accounts/[accountId]/page";
 
 const accountId = "018f0000-0000-7000-8000-000000000002";
 const actor = { id: "018f0000-0000-7000-8000-000000000001", email: "admin@example.test", displayName: "Admin", role: "admin" as const };

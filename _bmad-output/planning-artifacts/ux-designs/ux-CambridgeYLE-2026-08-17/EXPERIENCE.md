@@ -5,7 +5,7 @@ sources:
   - ../../prds/prd-CambridgeYLE-2026-08-17/prd.md
   - ../../../../docs/starters-curriculum-and-assessment-blueprint.md
 design: DESIGN.md
-updated: 2026-08-18
+updated: 2026-10-21
 ---
 
 # CambridgeYLE Experience Spine
@@ -22,7 +22,8 @@ The product is a Starters practice application, not an official exam service. It
 
 | Surface | Reached from | Purpose |
 | --- | --- | --- |
-| Sign in | App entry | Authenticate an admin-created learner, teacher, or admin account. |
+| Learner sign in | App entry (`/sign-in`) | Authenticate an admin-created learner account with email and password. No Google option, so a child on a parent's phone cannot sign in as the parent. Links to staff sign-in. |
+| Staff sign in | Learner sign-in link, any staff page while signed out (`/staff/sign-in`) | Authenticate an admin-created teacher, `academic_lead` or admin account with Google. Password sign-in appears only outside production. Links to learner sign-in. |
 | Learner home | Sign in, learner navigation | Choose published practice by topic/task type, see history-based recommendations, resumable drafts, and recent completed results. |
 | Practice preparation | Learner home | Confirm media preload and readiness before a set begins. |
 | Practice player | Preparation or recovered draft | Complete one learner-selected, published practice set without seeing answers or correctness. |
@@ -143,6 +144,7 @@ PWA installation is optional. The app makes install availability discoverable bu
 - AI-created content is visibly a draft in the editor and cannot bypass validator, academic review, or mobile preview.
 - Every result remains associated with the question and answer-policy version used at submission.
 - Only admin-created accounts can sign in. First-practice accounts are supervised, not a public sign-up route.
+- Each sign-in page admits only its own audience: a staff account on learner sign-in, or a learner account on staff sign-in, fails with the same generic message as a wrong password. Google sign-in never creates an account, except the first account for an address in the server's configured admin list. Signing out, or an ended session, returns the person to their own sign-in page.
 
 ## Key Flows
 

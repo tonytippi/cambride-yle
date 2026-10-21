@@ -7,7 +7,7 @@ paradigm: modular-monolith-with-ports-and-adapters
 scope: Responsive web/PWA pilot for Starters self-directed practice, teacher evidence, content workflow, admin accounts, and supervised first practice.
 status: current-with-open-gates
 created: 2026-08-17
-updated: 2026-08-18
+updated: 2026-10-21
 binds:
   - learner-practice
   - deterministic-scoring
@@ -124,6 +124,12 @@ flowchart LR
 - **Prevents:** recommendation output becoming mandatory practice, retired content being selected, or recommendation logic exposing another learner's data
 - **Rule:** A learner starts an attempt from a selected published set version. The recommendation query reads only that learner's immutable evidence facts and ranks eligible published sets by the evidence-state order in AD-10. It records recommendation version and shown set IDs for audit, does not create an assignment record, and always allows the learner to choose another published set by topic or task type.
 
+### AD-14 - Separable learner and staff surfaces
+
+- **Binds:** account-management, learner-practice, teacher-evidence, content-publication
+- **Prevents:** a learner client that cannot later leave the web application, or staff and learner sign-in paths that admit each other's accounts
+- **Rule:** Learner routes live under `src/app/(learner)` and staff routes under `src/app/(staff)`; lint rejects imports from one group into the other and from staff workspace UI into learner routes. Every learner mutation is an `/api/...` route handler over a feature application use-case, never a server action, so a future native client can reuse it. Learners sign in with an admin-set password; staff sign in with Google, and staff password sign-in is refused when `NODE_ENV=production`. Google sign-in never self-registers: it links only to an existing active staff account, or creates the first admin account for an address in `ADMIN_EMAILS`. A separate learner application, token-based sessions and a versioned API are deferred until a native client is approved.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -215,7 +221,7 @@ flowchart TB
 
 | Capability / Area | Lives in | Governed by |
 | --- | --- | --- |
-| Admin-created sign-in, sessions, roles, deactivation | `identity` | AD-1, AD-6, AD-8, AD-9 |
+| Admin-created sign-in, sessions, roles, deactivation | `identity` | AD-1, AD-6, AD-8, AD-9, AD-14 |
 | Starters tags, allowed vocabulary/grammar validation | `curriculum`, `content` | AD-1, AD-3, AD-9 |
 | Draft/review/approve/publish/retire content and AI reruns | `content` | AD-1, AD-3, AD-7, AD-9, AD-11, AD-12 |
 | Original media upload, approval, preloading | `content`, `infrastructure`, `pwa` | AD-2, AD-3, AD-7, AD-8, AD-11 |

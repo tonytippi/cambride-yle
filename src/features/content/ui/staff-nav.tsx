@@ -29,6 +29,6 @@ export function WorkspaceNav({ label, links }: { label: string; links: NavLink[]
   );
 }
 
-export function StaffNav() {
-  return <WorkspaceNav label="Content workspace" links={staffLinks} />;
+export function StaffNav({ extraLinks = [] }: { extraLinks?: NavLink[] }) {
+  return <WorkspaceNav label="Content workspace" links={[...staffLinks, ...extraLinks]} />;
 }

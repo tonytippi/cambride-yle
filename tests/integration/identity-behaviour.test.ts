@@ -12,7 +12,7 @@ const dependencies = vi.hoisted(() => {
     redirect: vi.fn((location: string) => { throw new Error(`REDIRECT:${location}`); }),
     logEvent: vi.fn(),
     signInLocally: vi.fn(), signInWithGoogle: vi.fn(), verifyGoogleIdToken: vi.fn(), revokeSession: vi.fn(),
-    repository: { isThrottled: vi.fn(), getAccountByEmail: vi.fn(), recordSignInFailure: vi.fn(), clearSignInFailures: vi.fn(), createSession: vi.fn(), revokeSession: vi.fn(), getEndedSessionAccount: vi.fn(), toActor: vi.fn((account) => ({ id: account.id, email: account.email, displayName: account.displayName, role: account.role })), getGoogleIdentity: vi.fn(), createAccount: vi.fn(), linkGoogleIdentity: vi.fn(), auditOidcProvisioning: vi.fn(), promoteGoogleAdmin: vi.fn() },
+    repository: { isThrottled: vi.fn(), getAccountByEmail: vi.fn(), recordSignInFailure: vi.fn(), clearSignInFailures: vi.fn(), createSession: vi.fn(), revokeSession: vi.fn(), getEndedSessionAccount: vi.fn(), getActorBySessionToken: vi.fn(), toActor: vi.fn((account) => ({ id: account.id, email: account.email, displayName: account.displayName, role: account.role })), getGoogleIdentity: vi.fn(), createAccount: vi.fn(), linkGoogleIdentity: vi.fn(), auditOidcProvisioning: vi.fn(), promoteGoogleAdmin: vi.fn() },
     verifyPassword: vi.fn(), verifyDummyPassword: vi.fn(),
     transaction: vi.fn(),
     selectAccount: undefined as unknown
@@ -29,7 +29,8 @@ vi.mock("@/features/identity/infrastructure/repositories", () => dependencies.re
 vi.mock("@/features/identity/infrastructure/password", () => ({ verifyPassword: dependencies.verifyPassword, verifyDummyPassword: dependencies.verifyDummyPassword, hashPassword: vi.fn() }));
 vi.mock("@/infrastructure/database/client", () => ({ database: { transaction: dependencies.transaction } }));
 
-import { signInAction } from "@/app/sign-in/actions";
+import { signInAction } from "@/app/(learner)/sign-in/actions";
+import { staffSignInAction } from "@/app/(staff)/staff/sign-in/actions";
 import { GET as googleCallback } from "@/app/api/auth/google/callback/route";
 import { POST as signOut } from "@/app/api/auth/sign-out/route";
 import { GET as sessionExpired } from "@/app/api/auth/session-expired/route";
@@ -71,6 +72,37 @@ describe("identity I/O matrix without external services", () => {
     expect(outcomes).toEqual(Array(4).fill("We could not sign you in with those details."));
   });
 
+  it("admits only learners on the learner page and only staff on the staff page, failing like a wrong password otherwise", async () => {
+    dependencies.repository.isThrottled.mockResolvedValue(false); dependencies.verifyPassword.mockResolvedValue(true); dependencies.repository.createSession.mockResolvedValue("session");
+    const { signInLocally: realSignInLocally } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    const teacher = { ...actor, id: "teacher", email: "teacher@example.test", role: "teacher" as const, status: "active", passwordHash: "hash" };
+    const learner = { ...actor, status: "active", passwordHash: "hash" };
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(teacher);
+    await expect(realSignInLocally(teacher.email, "password", "trusted.test", "learner")).rejects.toMatchObject({ code: "SIGN_IN_FAILED", message: "We could not sign you in with those details." });
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(learner);
+    await expect(realSignInLocally(learner.email, "password", "trusted.test", "staff")).rejects.toMatchObject({ code: "SIGN_IN_FAILED" });
+    expect(dependencies.repository.recordSignInFailure).toHaveBeenCalledTimes(2); expect(dependencies.repository.createSession).not.toHaveBeenCalled();
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(teacher);
+    await expect(realSignInLocally(teacher.email, "password", "trusted.test", "staff")).resolves.toMatchObject({ actor: { role: "teacher" } });
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(learner);
+    await expect(realSignInLocally(learner.email, "password", "trusted.test", "learner")).resolves.toMatchObject({ actor: { role: "learner" } });
+  });
+
+  it("refuses staff password sign-in in production before reading the account", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const { signInLocally: realSignInLocally } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+      await expect(realSignInLocally("teacher@example.test", "password", "trusted.test", "staff")).rejects.toMatchObject({ code: "SIGN_IN_FAILED" });
+      expect(dependencies.repository.getAccountByEmail).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("routes the staff password action through the staff audience", async () => {
+    dependencies.signInLocally.mockResolvedValue({ actor: { ...actor, role: "academic_lead" }, token: "staff-session" });
+    await expect(staffSignInAction({}, form("lead@example.test"))).rejects.toThrow("REDIRECT:/academic-lead");
+    expect(dependencies.signInLocally).toHaveBeenCalledWith("lead@example.test", "correct-password", "trusted.test", "staff");
+  });
+
   it("does not turn a post-verification deactivation race into a local sign-in", async () => {
     dependencies.repository.isThrottled.mockResolvedValue(false);
     dependencies.repository.getAccountByEmail.mockResolvedValue({ ...actor, status: "active", passwordHash: "hash" });
@@ -81,23 +113,34 @@ describe("identity I/O matrix without external services", () => {
     expect(dependencies.repository.clearSignInFailures).not.toHaveBeenCalled();
   });
 
-  it("handles a verified Google callback with no-store session response for both admin and learner actors", async () => {
+  it("handles a verified Google callback with no-store session response for admin and teacher actors", async () => {
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub", email: "admin@example.test", displayName: "Admin" }); dependencies.signInWithGoogle.mockResolvedValue({ actor: { ...actor, role: "admin" }, token: "admin-session" });
     const admin = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
     expect(admin.headers.get("location")).toBe("/admin"); expect(admin.headers.get("cache-control")).toContain("no-store"); expect(admin.headers.get("set-cookie")).toContain("cambridgeyle_session=admin-session");
-    dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub2", email: "learner@example.test", displayName: "Learner" }); dependencies.signInWithGoogle.mockResolvedValue({ actor, token: "learner-session" });
-    const learner = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
-    expect(learner.headers.get("location")).toBe("/learner");
+    dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockResolvedValue({ subject: "sub2", email: "teacher@example.test", displayName: "Teacher" }); dependencies.signInWithGoogle.mockResolvedValue({ actor: { ...actor, role: "teacher" }, token: "teacher-session" });
+    const teacher = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
+    expect(teacher.headers.get("location")).toBe("/teacher");
   });
 
-  it("uses ADMIN_EMAILS only when provisioning new Google accounts and preserves existing account roles", async () => {
-    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.getAccountByEmail.mockResolvedValueOnce({ ...actor, id: "existing", role: "learner", status: "active" }); dependencies.repository.createSession.mockResolvedValue("session");
+  it("never self-registers through Google: only an ADMIN_EMAILS address creates its first account, and learners are refused", async () => {
+    dependencies.repository.getGoogleIdentity.mockResolvedValue(undefined); dependencies.repository.createSession.mockResolvedValue("session");
     const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
-    const existing = await realSignInWithGoogle({ subject: "admin-sub", email: "admin@example.test", displayName: "Admin" }, ["admin@example.test"]);
-    expect(existing.actor.role).toBe("learner"); expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled();
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce(undefined);
+    await expect(realSignInWithGoogle({ subject: "stranger-sub", email: "stranger@example.test", displayName: "Stranger" }, ["admin@example.test"])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
+    expect(dependencies.repository.createAccount).not.toHaveBeenCalled();
+    dependencies.repository.getAccountByEmail.mockResolvedValueOnce({ ...actor, id: "existing", role: "learner", status: "active" });
+    await expect(realSignInWithGoogle({ subject: "admin-sub", email: "admin@example.test", displayName: "Admin" }, ["admin@example.test"])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
+    expect(dependencies.repository.linkGoogleIdentity).not.toHaveBeenCalled(); expect(dependencies.repository.promoteGoogleAdmin).not.toHaveBeenCalled(); expect(dependencies.repository.createSession).not.toHaveBeenCalled();
     dependencies.repository.getAccountByEmail.mockResolvedValueOnce(undefined); dependencies.repository.createAccount.mockResolvedValue("new-admin"); dependencies.selectAccount = { ...actor, id: "new-admin", role: "admin" };
-    const created = await realSignInWithGoogle({ subject: "new-admin-sub", email: "new-admin@example.test", displayName: "New Admin" }, ["new-admin@example.test"]);
+    const created = await realSignInWithGoogle({ subject: "new-admin-sub", email: "New-Admin@Example.Test", displayName: "New Admin" }, ["new-admin@example.test"]);
     expect(created.actor.role).toBe("admin"); expect(dependencies.repository.createAccount).toHaveBeenLastCalledWith(expect.objectContaining({ role: "admin" }), undefined, expect.anything()); expect(dependencies.repository.auditOidcProvisioning).toHaveBeenCalledWith("new-admin", expect.anything());
+  });
+
+  it("refuses a previously linked Google identity whose account is now a learner", async () => {
+    dependencies.repository.getGoogleIdentity.mockResolvedValue({ accountId: actor.id }); dependencies.selectAccount = { ...actor, status: "active" };
+    const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
+    await expect(realSignInWithGoogle({ subject: "learner-sub", email: actor.email, displayName: "Learner" }, [])).rejects.toMatchObject({ code: "GOOGLE_SIGN_IN_FAILED" });
+    expect(dependencies.repository.createSession).not.toHaveBeenCalled();
   });
 
   it("links a verified Google identity to an active existing teacher without changing their role", async () => {
@@ -109,7 +152,7 @@ describe("identity I/O matrix without external services", () => {
   });
 
   it("accepts a previously linked Google identity when its verified email differs only by presentation", async () => {
-    const account = { ...actor, email: "Teacher@Example.Test", status: "active" };
+    const account = { ...actor, email: "Teacher@Example.Test", role: "teacher", status: "active" };
     dependencies.repository.getGoogleIdentity.mockResolvedValue({ accountId: actor.id }); dependencies.selectAccount = account; dependencies.repository.createSession.mockResolvedValue("session");
     const { signInWithGoogle: realSignInWithGoogle } = await vi.importActual<typeof import("@/features/identity/application/auth")>("@/features/identity/application/auth");
     await expect(realSignInWithGoogle({ subject: "teacher-sub", email: " teacher@example.test ", displayName: "Teacher" }, [])).resolves.toMatchObject({ actor: { id: actor.id } });
@@ -130,15 +173,29 @@ describe("identity I/O matrix without external services", () => {
   });
 
   it("rejects invalid state, invalid token, and unverified identities without provisioning", async () => {
-    const invalidState = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=missing&code=code")); expect(invalidState.headers.get("location")).toContain("/sign-in?error=google");
+    const invalidState = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=missing&code=code")); expect(invalidState.headers.get("location")).toContain("/staff/sign-in?error=google");
     dependencies.cookieJar.values.set("cambridgeyle_google_oauth_state", "state.nonce.verifier"); dependencies.verifyGoogleIdToken.mockRejectedValue(new Error("unverified"));
     const invalidToken = await googleCallback(nextRequest("http://app.test/api/auth/google/callback?state=state&code=code"));
-    expect(invalidToken.headers.get("location")).toContain("/sign-in?error=google"); expect(dependencies.signInWithGoogle).not.toHaveBeenCalled();
+    expect(invalidToken.headers.get("location")).toContain("/staff/sign-in?error=google"); expect(dependencies.signInWithGoogle).not.toHaveBeenCalled();
   });
 
   it("signs out with 303, clears the cookie, and revokes its server session", async () => {
-    dependencies.cookieJar.values.set("cambridgeyle_session", "opaque-session-token"); const response = await signOut();
+    dependencies.cookieJar.values.set("cambridgeyle_session", "opaque-session-token"); dependencies.repository.getActorBySessionToken.mockResolvedValueOnce(actor); const response = await signOut();
     expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("/sign-in"); expect(dependencies.repository.revokeSession).toHaveBeenCalledWith("opaque-session-token"); expect(response.headers.get("set-cookie")).toContain("cambridgeyle_session=; ");
+  });
+
+  it("returns signed-out staff to staff sign-in", async () => {
+    dependencies.cookieJar.values.set("cambridgeyle_session", "staff-session"); dependencies.repository.getActorBySessionToken.mockResolvedValueOnce({ ...actor, role: "admin" });
+    expect((await signOut()).headers.get("location")).toBe("/staff/sign-in");
+  });
+
+  it("sends an ended session from a staff page to staff sign-in, and ignores any other audience value", async () => {
+    dependencies.cookieJar.values.set("cambridgeyle_session", "ended-staff-session");
+    const { createSessionCleanupToken } = await import("@/features/identity/infrastructure/session-cleanup");
+    const token = createSessionCleanupToken("ended-staff-session");
+    dependencies.repository.getEndedSessionAccount.mockResolvedValue({ id: actor.id, status: "active", role: "teacher" });
+    expect((await sessionExpired(nextRequest(`http://app.test/api/auth/session-expired?token=${token}&audience=staff`))).headers.get("location")).toBe("/staff/sign-in");
+    expect((await sessionExpired(nextRequest(`http://app.test/api/auth/session-expired?token=${token}&audience=https://evil.test`))).headers.get("location")).toBe("/sign-in");
   });
 
   it("tells a deactivated learner's device to remove that learner's local data, but not other ended sessions", async () => {

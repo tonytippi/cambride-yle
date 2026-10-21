@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import type { ContentActionState } from "@/app/academic-lead/actions";
+import type { ContentActionState } from "@/app/(staff)/academic-lead/actions";
 import { engineLabel, paperLabel, statusLabel } from "./labels";
 
 /* eslint-disable no-unused-vars */

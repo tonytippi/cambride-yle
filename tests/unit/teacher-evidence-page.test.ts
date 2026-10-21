@@ -6,7 +6,7 @@ vi.mock("@/features/identity/ui/session", () => ({ requireRole: dependencies.req
 vi.mock("@/features/evidence/application/get-centre-evidence", () => ({ getCentreEvidence: dependencies.getCentreEvidence }));
 vi.mock("@/features/evidence/ui/evidence-dashboard", () => ({ EvidenceDashboard: (props: { error?: string }) => createElement("output", undefined, props.error) }));
 
-import TeacherHome from "@/app/teacher/page";
+import TeacherHome from "@/app/(staff)/teacher/page";
 
 const teacher = { id: "018f0000-0000-7000-8000-000000000001", role: "teacher" as const, email: "teacher@example.test", displayName: "Teacher" };
 

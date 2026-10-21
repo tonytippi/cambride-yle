@@ -1,6 +1,6 @@
 "use client";
 import { useActionState } from "react";
-import type { CurriculumActionState } from "@/app/academic-lead/actions";
+import type { CurriculumActionState } from "@/app/(staff)/academic-lead/actions";
 /* eslint-disable no-unused-vars */
 type Action = (
   state: CurriculumActionState,

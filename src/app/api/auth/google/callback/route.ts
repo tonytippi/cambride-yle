@@ -11,7 +11,7 @@ import { logEvent } from "@/shared/logging/logger";
 export async function GET(request: NextRequest) {
   const url = request.nextUrl; const state = url.searchParams.get("state"); const jar = await cookies(); const saved = state ? jar.get(oauthCookieName(state))?.value : undefined; const [storedState, nonce, verifier] = saved?.split(".") ?? [];
   const clearTransient = (response: NextResponse) => { for (const cookie of jar.getAll()) if (cookie.name.startsWith(oauthCookiePrefix)) response.cookies.set(cookie.name, "", { ...oauthCookieOptions, maxAge: 0 }); return response; };
-  const failure = (code: string) => { logEvent({ requestId: request.headers.get("x-request-id") ?? "unknown", feature: "identity", action: "google-sign-in", outcome: "failure", errorCode: code }); return clearTransient(redirectTo("/sign-in?error=google", 307)); };
+  const failure = (code: string) => { logEvent({ requestId: request.headers.get("x-request-id") ?? "unknown", feature: "identity", action: "google-sign-in", outcome: "failure", errorCode: code }); return clearTransient(redirectTo("/staff/sign-in?error=google", 307)); };
   if (!state || !saved || !storedState || !safeEqual(state, storedState) || !nonce || !verifier || !url.searchParams.get("code")) return failure("GOOGLE_STATE_INVALID");
   let stage = "GOOGLE_TOKEN_EXCHANGE_FAILED";
   try {

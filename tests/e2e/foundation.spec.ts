@@ -28,16 +28,24 @@ test("server responses apply the security header policy", async ({ request }) =>
   });
 });
 
-test("content draft workspace is protected from unauthenticated visitors", async ({ page }) => {
+test("content draft workspace sends unauthenticated visitors to staff sign-in", async ({ page }) => {
   await page.goto("/academic-lead");
-  await expect(page).toHaveURL(/\/sign-in$/);
-  await expect(page.getByRole("heading", { name: "Sign in to practice" })).toBeVisible();
+  await expect(page).toHaveURL(/\/staff\/sign-in$/);
+  await expect(page.getByRole("heading", { name: "Staff sign-in" })).toBeVisible();
+});
+
+test("learner sign-in offers only a password, with a link to staff sign-in", async ({ page }) => {
+  await page.goto("/sign-in");
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Staff sign-in" }).click();
+  await expect(page).toHaveURL(/\/staff\/sign-in$/);
+  await expect(page.getByRole("link", { name: "Learner sign-in" })).toBeVisible();
 });
 
 test("Continue with Google navigates the whole page to Google instead of fetching the redirect", async ({ page }) => {
   // Never reach the real Google endpoint from tests.
   await page.route((url) => url.hostname === "accounts.google.com", (route) => route.abort());
-  await page.goto("/sign-in");
+  await page.goto("/staff/sign-in");
   const [request] = await Promise.all([
     page.waitForRequest((candidate) => candidate.url().startsWith("https://accounts.google.com/o/oauth2/v2/auth?")),
     page.getByRole("link", { name: "Continue with Google" }).click(),
